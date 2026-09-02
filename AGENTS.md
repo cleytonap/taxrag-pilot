@@ -40,6 +40,12 @@ Act as a senior engineer and teacher throughout this project.
 - Document the decision and the reason for it in the relevant spec or ADR so the repository remains useful as study material.
 - Do not treat an embedding model, vector database, or LLM as the source of truth. Preserve the official source and its provenance so every derived artifact can be recreated.
 
+## Code Documentation
+
+- Add short docstrings to public functions, classes, and command entry points explaining their role in the product.
+- Add concise inline comments inside a function when a block implements a non-obvious workflow, security boundary, or design decision.
+- Do not comment obvious syntax line by line; comments should explain intent and tradeoffs that a learner could not infer from the code alone.
+
 ## Constructive Challenge
 
 Do not take user preferences, proposed features, or architectural ideas for granted.

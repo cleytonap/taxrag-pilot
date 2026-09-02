@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _object_storage_root() -> Path:
+    """Return an absolute path for local object storage from the environment setting."""
     configured_path = Path(os.getenv("TAXRAG_OBJECT_STORAGE_ROOT", "var/object-storage"))
     return configured_path if configured_path.is_absolute() else PROJECT_ROOT / configured_path
 

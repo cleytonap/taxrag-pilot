@@ -16,6 +16,8 @@ from taxrag.storage import LocalObjectStorage
 
 
 def ingest_source(session: Session, approved_source: ApprovedSource) -> IngestionRun:
+    """Fetch one allow-listed source and record an immutable content version when it changes."""
+    # Create the durable source identity once; each fetch is tracked separately as a run.
     source = session.scalar(select(Source).where(Source.source_key == approved_source.source_key))
     if source is None:
         source = Source(
@@ -35,6 +37,7 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
     try:
         response = _fetch_html(approved_source.canonical_url)
         content_hash = hashlib.sha256(response.content).hexdigest()
+        # The hash makes the ingestion operation idempotent even if it runs repeatedly.
         existing_version = session.scalar(
             select(SourceVersion).where(
                 SourceVersion.source_id == source.id,
@@ -50,6 +53,7 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
 
         storage_key = f"raw/{source.source_key}/{content_hash}/original.html"
         LocalObjectStorage(settings.object_storage_root).put_bytes(storage_key, response.content)
+        # Store the raw artifact outside PostgreSQL and retain its verifiable pointer in the database.
         source_version = SourceVersion(
             source_id=source.id,
             content_hash=content_hash,
@@ -72,6 +76,7 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
 
 
 def _fetch_html(url: str) -> httpx.Response:
+    """Download an HTML source, following official redirects and rejecting unexpected content."""
     with httpx.Client(
         follow_redirects=True,
         timeout=30.0,
