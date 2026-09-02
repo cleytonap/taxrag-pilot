@@ -18,3 +18,10 @@ def test_put_bytes_rejects_path_traversal(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="within its configured root"):
         storage.put_bytes("../outside.html", b"not allowed")
+
+
+def test_get_bytes_reads_a_stored_object(tmp_path: Path) -> None:
+    storage = LocalObjectStorage(tmp_path)
+    storage.put_bytes("raw/example/original.html", b"official source")
+
+    assert storage.get_bytes("raw/example/original.html") == b"official source"
