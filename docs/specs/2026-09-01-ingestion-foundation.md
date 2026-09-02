@@ -1,7 +1,7 @@
 # Ingestion Foundation: First Official Source
 
 Date: 2026-09-01
-Status: Draft
+Status: Implemented
 
 ## Problem
 
@@ -61,3 +61,14 @@ The source record is seeded from the approved source inventory, rather than allo
 - Database records show a source, one source version, and successful ingestion run.
 - Re-running the command does not duplicate an unchanged version.
 - The foundation is committed and pushed with generated artifacts excluded.
+
+## Implementation Evidence
+
+Validated locally on 2026-09-02:
+
+- Alembic revision `20260901_01` applied successfully to PostgreSQL with `pgvector`.
+- The approved Receita Federal HTML source was stored with SHA-256
+  `4e779e493e14ad8f6625da0362215fcd0b52657b0b3b6b96903f97c0492735e8`.
+- The stored artifact's SHA-256 matches the `source_versions.content_hash` value.
+- A second ingestion run produced `unchanged`; the database contains one source, one source
+  version, and two ingestion-run records.
