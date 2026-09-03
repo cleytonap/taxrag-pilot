@@ -11,6 +11,7 @@ The project begins with reliable source ingestion before adding retrieval and an
 docker compose up -d
 uv run alembic upgrade head
 uv run python -m apps.worker ingest-source irpf-2026-quem-deve-declarar
+uv run python -m apps.worker process-source irpf-2026-quem-deve-declarar
 ```
 
 The raw HTML is written to `var/object-storage/`. PostgreSQL retains the source,
@@ -23,4 +24,11 @@ uv run ruff check .
 uv run pytest
 pnpm --dir apps/web lint
 pnpm --dir apps/web build
+```
+
+Search the processed chunks and run the lexical retrieval baseline with:
+
+```bash
+uv run python -m apps.worker search "Qual é o limite de rendimentos tributáveis?"
+uv run python -m apps.worker eval-retrieval
 ```
