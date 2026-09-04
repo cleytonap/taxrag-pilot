@@ -22,6 +22,7 @@ Applicable calendar year: 2025
 - publisher: Receita Federal do Brasil
 - authority: `tax_authority_norm`
 - canonical entry point: [Receita Federal Normas search](https://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?termoBusca=declaracao+ajuste+de+renda+anual)
+- official presentation URL: <https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/149930>
 - discovery identifier: number `2312`, published `16/03/2026`
 - applicable period: exercise 2026, calendar year 2025
 - required extraction anchors: `Art. 2`, each inciso, and each paragraph
