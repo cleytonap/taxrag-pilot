@@ -80,6 +80,8 @@ class SourceAnchor(Base):
     display_title: Mapped[str] = mapped_column(String(500))
     ordinal: Mapped[int] = mapped_column()
     text: Mapped[str] = mapped_column(Text)
+    page_start: Mapped[int | None] = mapped_column(nullable=True)
+    page_end: Mapped[int | None] = mapped_column(nullable=True)
 
 
 class Chunk(Base):

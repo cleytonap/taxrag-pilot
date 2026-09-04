@@ -70,3 +70,15 @@ Validated locally on 2026-09-03 against the eight chunks from the approved Recei
 - One explicit known-gap case did not retrieve the expected `legislacao--04` anchor:
   the user phrase `instrução normativa` has no lexical overlap with the source label
   `IN RFB`. This case is retained for a future semantic/hybrid retrieval comparison.
+
+## Source-Expansion Recheck
+
+After the official questions-and-answers PDF added six chunks on 2026-09-04, the original
+exact-anchor development score changed from `8/8` to `6/8` required cases. This is not treated
+as a reason to relabel cases until we distinguish two concerns:
+
+- a detailed PDF passage can be an equivalent, acceptable support source for a broad question;
+- broad `OR` lexical matching can rank a generic passage above a more direct heading-level chunk.
+
+The next retrieval-quality slice must introduce permitted-support sets in evaluation cases and
+compare heading-weighted ranking before this baseline is used as a release gate again.

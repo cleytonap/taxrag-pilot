@@ -13,6 +13,7 @@ from taxrag.extraction import (
     EXTRACTOR_VERSION,
     ExtractionResult,
     extract_receita_guidance_html,
+    extract_receita_questions_answers_pdf,
 )
 from taxrag.models import Chunk, ExtractedDocument, Source, SourceAnchor, SourceVersion
 from taxrag.storage import LocalObjectStorage
@@ -79,6 +80,8 @@ def _extract(document_family: str, raw_content: bytes) -> ExtractionResult:
     """Select the explicit parser adapter for the source's known document family."""
     if document_family == "receita_guidance_html":
         return extract_receita_guidance_html(raw_content)
+    if document_family == "receita_questions_answers_pdf":
+        return extract_receita_questions_answers_pdf(raw_content)
     raise ValueError(f"No extraction adapter exists for document family {document_family}")
 
 
@@ -103,6 +106,8 @@ def _persist_extraction(
             display_title=section.display_title,
             ordinal=section.ordinal,
             text=section.text,
+            page_start=section.page_start,
+            page_end=section.page_end,
         )
         session.add(anchor)
         session.flush()

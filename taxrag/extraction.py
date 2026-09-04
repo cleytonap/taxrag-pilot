@@ -6,6 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+import pymupdf
 from bs4 import BeautifulSoup, Tag
 
 EXTRACTOR_NAME = "receita-guidance-html"
@@ -20,6 +21,8 @@ class ExtractedSection:
     display_title: str
     ordinal: int
     text: str
+    page_start: int | None = None
+    page_end: int | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +67,99 @@ def extract_receita_guidance_html(html: bytes) -> ExtractionResult:
     if not sections:
         raise ValueError("Receita guidance HTML did not produce any text sections")
 
+    normalized_text = "\n\n".join(f"{section.display_title}\n{section.text}" for section in sections)
+    return ExtractionResult(normalized_text=normalized_text, sections=sections)
+
+
+# The official PDF uses an em dash. Some valid PDF text extractors expose the same
+# visual separator as a middle dot, so accept both while still requiring a 3-digit line start.
+QUESTION_HEADER = re.compile(r"(?m)^(?P<number>\d{3})\s+[—·]\s+(?P<title>.+)$")
+
+
+def extract_receita_questions_answers_pdf(pdf: bytes) -> ExtractionResult:
+    """Extract the initial IRPF filing-obligation questions with their PDF page provenance."""
+    document = pymupdf.open(stream=pdf, filetype="pdf")
+    sections: list[ExtractedSection] = []
+    current_number: int | None = None
+    current_title = ""
+    current_blocks: list[str] = []
+    page_start: int | None = None
+    page_end: int | None = None
+
+    for page in document:
+        page_number = page.number + 1
+        page_text = _normalize_pdf_text(page.get_text())
+        matches = list(QUESTION_HEADER.finditer(page_text))
+        if not matches:
+            if current_number is not None:
+                current_blocks.append(page_text)
+                page_end = page_number
+            continue
+
+        cursor = 0
+        for match in matches:
+            question_number = int(match.group("number"))
+            before_question = page_text[cursor : match.start()].strip()
+            if current_number is not None and before_question:
+                current_blocks.append(before_question)
+                page_end = page_number
+
+            _append_pdf_question(
+                sections,
+                current_number,
+                current_title,
+                current_blocks,
+                page_start,
+                page_end,
+            )
+            if question_number > 6:
+                return _pdf_result(sections)
+
+            current_number = question_number
+            current_title = _normalize_pdf_text(match.group("title"))
+            current_blocks = []
+            page_start = page_number
+            page_end = page_number
+            cursor = match.end()
+
+        trailing_text = page_text[cursor:].strip()
+        if current_number is not None and trailing_text:
+            current_blocks.append(trailing_text)
+
+    _append_pdf_question(sections, current_number, current_title, current_blocks, page_start, page_end)
+    return _pdf_result(sections)
+
+
+def _append_pdf_question(
+    sections: list[ExtractedSection],
+    question_number: int | None,
+    title: str,
+    blocks: list[str],
+    page_start: int | None,
+    page_end: int | None,
+) -> None:
+    """Persist one completed numbered PDF question as a page-aware extraction section."""
+    if question_number is None:
+        return
+    text = "\n\n".join(block for block in blocks if block).strip()
+    if not text:
+        return
+    sections.append(
+        ExtractedSection(
+            anchor_key=f"question-{question_number:03d}--p{page_start}",
+            display_title=f"Question {question_number:03d}: {title}",
+            ordinal=len(sections) + 1,
+            text=text,
+            page_start=page_start,
+            page_end=page_end,
+        )
+    )
+
+
+def _pdf_result(sections: list[ExtractedSection]) -> ExtractionResult:
+    """Validate and assemble the normalized PDF extraction result."""
+    if not sections:
+        raise ValueError("IRPF questions-and-answers PDF did not produce filing-obligation questions")
     normalized_text = "\n\n".join(f"{section.display_title}\n{section.text}" for section in sections)
     return ExtractionResult(normalized_text=normalized_text, sections=sections)
 
@@ -137,6 +233,11 @@ def _normalize_text(text: str) -> str:
         for line in text.splitlines()
         if line.strip()
     )
+
+
+def _normalize_pdf_text(text: str) -> str:
+    """Normalize PDF extraction whitespace while preserving page-level line boundaries."""
+    return "\n".join(re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines() if line.strip())
 
 
 def _slugify(value: str) -> str:

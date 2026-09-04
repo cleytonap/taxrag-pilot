@@ -26,6 +26,9 @@ Applicable calendar year: 2025
 - applicable period: exercise 2026, calendar year 2025
 - required extraction anchors: `Art. 2`, each inciso, and each paragraph
 - refresh policy: once before each ingestion run and monthly while this exercise is active
+- access note: the current Receita Normas URL is a JavaScript application shell. Do not ingest it
+  as if it contained the act text. Admit an official static publication URL or build a dedicated,
+  tested access adapter before activating this source.
 
 ### `irpf-2026-quem-deve-declarar`
 

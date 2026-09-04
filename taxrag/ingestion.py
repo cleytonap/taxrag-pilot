@@ -35,7 +35,7 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
     session.commit()
 
     try:
-        response = _fetch_html(approved_source.canonical_url)
+        response = _fetch_source(approved_source)
         content_hash = hashlib.sha256(response.content).hexdigest()
         # The hash makes the ingestion operation idempotent even if it runs repeatedly.
         existing_version = session.scalar(
@@ -51,7 +51,7 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
             session.commit()
             return run
 
-        storage_key = f"raw/{source.source_key}/{content_hash}/original.html"
+        storage_key = f"raw/{source.source_key}/{content_hash}/{approved_source.raw_filename}"
         LocalObjectStorage(settings.object_storage_root).put_bytes(storage_key, response.content)
         # Store the raw artifact outside PostgreSQL and retain its verifiable pointer in the database.
         source_version = SourceVersion(
@@ -75,17 +75,20 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
         raise
 
 
-def _fetch_html(url: str) -> httpx.Response:
-    """Download an HTML source, following official redirects and rejecting unexpected content."""
+def _fetch_source(approved_source: ApprovedSource) -> httpx.Response:
+    """Download an approved source and reject content that differs from its declared format."""
     with httpx.Client(
         follow_redirects=True,
         timeout=30.0,
         headers={"User-Agent": "TaxRAG learning project source ingestor"},
     ) as client:
-        response = client.get(url)
+        response = client.get(approved_source.canonical_url)
         response.raise_for_status()
 
     content_type = response.headers.get("content-type", "")
-    if not content_type.startswith("text/html"):
-        raise ValueError(f"Expected HTML source content but received {content_type or 'no content type'}")
+    if not content_type.startswith(approved_source.expected_content_type):
+        raise ValueError(
+            f"Expected {approved_source.expected_content_type} source content but received "
+            f"{content_type or 'no content type'}"
+        )
     return response
