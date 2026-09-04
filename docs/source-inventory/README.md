@@ -35,5 +35,6 @@ Every source record will eventually contain at least:
 - Receita Federal [IRPF tables for 2026](https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026)
 - Receita Federal [Perguntas e Respostas IRPF archive](https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/perguntas-e-respostas/dirpf)
 - Receita Federal [Normas search system](https://normas.receita.fazenda.gov.br/sijut2consulta/normas.receisulta/consulta.action)
+- Diario Oficial da Uniao publication for [IN RFB no 2.312/2026](https://www.in.gov.br/en/web/dou/-/instrucao-normativa-rfb-n-2.312-de-13-de-marco-de-2026-692748727)
 
 The exact documents admitted for the first retrieval experiment will be listed in a later, topic-specific inventory file.

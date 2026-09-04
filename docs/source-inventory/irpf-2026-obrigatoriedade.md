@@ -21,15 +21,18 @@ Applicable calendar year: 2025
 - title: Instrucao Normativa RFB no 2.312, de 13 de marco de 2026
 - publisher: Receita Federal do Brasil
 - authority: `tax_authority_norm`
-- canonical entry point: [Receita Federal Normas search](https://normas.receita.fazenda.gov.br/sijut2consulta/consulta.action?termoBusca=declaracao+ajuste+de+renda+anual)
-- official presentation URL: <https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/149930>
-- discovery identifier: number `2312`, published `16/03/2026`
+- canonical URL: [Diario Oficial da Uniao publication](https://www.in.gov.br/en/web/dou/-/instrucao-normativa-rfb-n-2.312-de-13-de-marco-de-2026-692748727)
+- official alternate presentation URL: <https://normasinternet2.receita.fazenda.gov.br/#/consulta/externa/149930>
+- discovery identifier: number `2312`, published `13/03/2026`
 - applicable period: exercise 2026, calendar year 2025
 - required extraction anchors: `Art. 2`, each inciso, and each paragraph
 - refresh policy: once before each ingestion run and monthly while this exercise is active
-- access note: the current Receita Normas URL is a JavaScript application shell. Do not ingest it
-  as if it contained the act text. Admit an official static publication URL or build a dedicated,
-  tested access adapter before activating this source.
+- admission status: pending automated-access verification
+- access note: the Receita Normas URL is a JavaScript application shell, so it is not suitable for
+  text extraction. The DOU publication is the preferred static official representation. On
+  2026-09-04, automated requests from the development environment were disconnected before a
+  response; do not activate this source in the worker until a reproducible retrieval method and
+  parser fixture exist.
 
 ### `irpf-2026-quem-deve-declarar`
 
