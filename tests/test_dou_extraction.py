@@ -24,6 +24,8 @@ def test_dou_extraction_preserves_article_paragraph_and_inciso_boundaries() -> N
     assert "Art. 2º Está obrigada" in stock_operations.text
     assert "a) cuja soma foi superior a R$ 40.000,00" in stock_operations.text
     assert "b) com apuração de ganhos líquidos" in stock_operations.text
+    assert "Art. 2º Está obrigada" not in stock_operations.search_text
+    assert stock_operations.search_text.startswith("IV - realizou operações")
 
     dependent_exception = result.sections[5]
     assert dependent_exception.display_title == "Art. 2, § 1º, inciso II"

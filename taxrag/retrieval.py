@@ -7,6 +7,26 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+AUTHORITY_MULTIPLIERS = {
+    "primary_legislation": 1.35,
+    "regulation": 1.25,
+    "tax_authority_norm": 1.20,
+    "official_guidance": 1.00,
+}
+
+
+def authority_multiplier(authority_level: str) -> float:
+    """Return the bounded authority adjustment used after lexical candidate matching."""
+    return AUTHORITY_MULTIPLIERS.get(authority_level, 1.00)
+
+
+AUTHORITY_SCORE_CASE = """CASE s.authority_level
+    WHEN 'primary_legislation' THEN 1.35
+    WHEN 'regulation' THEN 1.25
+    WHEN 'tax_authority_norm' THEN 1.20
+    ELSE 1.00
+END"""
+
 
 @dataclass(frozen=True)
 class RetrievedChunk:
@@ -18,6 +38,8 @@ class RetrievedChunk:
     chunk_text: str
     source_title: str
     canonical_url: str
+    authority_level: str
+    lexical_score: float
     score: float
 
 
@@ -28,10 +50,10 @@ def search_chunks(session: Session, question: str, limit: int = 3) -> list[Retri
     if limit < 1:
         raise ValueError("Search limit must be at least 1")
 
-    # The config, indexed expression, query expression, and rank expression must match.
-    # Otherwise PostgreSQL may rank one representation while indexing another.
+    # `search_text` deliberately differs from citation text for legal subdivisions.
+    # It removes repeated inherited context while preserving the full `chunk_text` for citations.
     query = text(
-        """
+        f"""
         WITH search_query AS (
             SELECT websearch_to_tsquery(
                 'portuguese',
@@ -45,7 +67,10 @@ def search_chunks(session: Session, question: str, limit: int = 3) -> list[Retri
             c.text AS chunk_text,
             s.title AS source_title,
             s.canonical_url,
-            ts_rank_cd(to_tsvector('portuguese', c.text), search_query.value) AS score
+            s.authority_level,
+            ts_rank_cd(to_tsvector('portuguese', c.search_text), search_query.value) AS lexical_score,
+            ts_rank_cd(to_tsvector('portuguese', c.search_text), search_query.value)
+                * ({AUTHORITY_SCORE_CASE}) AS score
         FROM chunks AS c
         JOIN source_anchors AS a ON a.id = c.source_anchor_id
         JOIN source_versions AS sv ON sv.id = c.source_version_id
@@ -53,8 +78,8 @@ def search_chunks(session: Session, question: str, limit: int = 3) -> list[Retri
         CROSS JOIN search_query
         WHERE s.is_active
           AND sv.processing_status = 'processed'
-          AND to_tsvector('portuguese', c.text) @@ search_query.value
-        ORDER BY score DESC, c.ordinal ASC
+          AND to_tsvector('portuguese', c.search_text) @@ search_query.value
+        ORDER BY score DESC, lexical_score DESC, c.ordinal ASC
         LIMIT :limit
         """
     )
@@ -67,6 +92,8 @@ def search_chunks(session: Session, question: str, limit: int = 3) -> list[Retri
             chunk_text=row["chunk_text"],
             source_title=row["source_title"],
             canonical_url=row["canonical_url"],
+            authority_level=row["authority_level"],
+            lexical_score=float(row["lexical_score"]),
             score=float(row["score"]),
         )
         for row in rows

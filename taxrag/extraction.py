@@ -10,7 +10,7 @@ import pymupdf
 from bs4 import BeautifulSoup, Tag
 
 EXTRACTOR_NAME = "source-family-extractors"
-EXTRACTOR_VERSION = "3"
+EXTRACTOR_VERSION = "4"
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,7 @@ class ExtractedSection:
     text: str
     page_start: int | None = None
     page_end: int | None = None
+    search_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,9 @@ def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
                 display_title=label,
                 ordinal=len(sections) + 1,
                 text="\n".join(context),
+                # Citation text retains inherited legal context. Search text must not:
+                # otherwise every inciso matches the repeated article caput equally.
+                search_text="\n".join(current_inciso_blocks),
             )
         )
 
@@ -152,6 +156,7 @@ def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
                     display_title=f"Art. 2, {current_paragraph_label}",
                     ordinal=len(sections) + 1,
                     text=f"{article_caput}\n{text}",
+                    search_text=text,
                 )
             )
             continue

@@ -51,7 +51,11 @@ def main() -> None:
         with SessionLocal() as session:
             matches = search_chunks(session, args.question, args.limit)
         for rank, match in enumerate(matches, start=1):
-            print(f"{rank}. {match.anchor_key} ({match.score:.4f})")
+            print(
+                f"{rank}. {match.anchor_key} "
+                f"(score {match.score:.4f}; lexical {match.lexical_score:.4f}; "
+                f"authority {match.authority_level})"
+            )
             print(f"   {match.anchor_title} - {match.source_title}")
             print(f"   {match.canonical_url}")
     elif args.command == "eval-retrieval":

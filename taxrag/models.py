@@ -95,4 +95,5 @@ class Chunk(Base):
     source_anchor_id: Mapped[UUID] = mapped_column(ForeignKey("source_anchors.id"), index=True)
     ordinal: Mapped[int] = mapped_column()
     text: Mapped[str] = mapped_column(Text)
+    search_text: Mapped[str] = mapped_column(Text)
     character_count: Mapped[int] = mapped_column()

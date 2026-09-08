@@ -67,7 +67,10 @@ def process_latest_source_version(session: Session, source_key: str) -> Processi
 
         html = LocalObjectStorage(settings.object_storage_root).get_bytes(source_version.storage_key)
         extraction = _extract(source.document_family, html)
-        _persist_extraction(session, source_version, extraction)
+        source = session.get(Source, source_version.source_id)
+        if source is None:
+            raise ValueError(f"Source version {source_version.id} has no source")
+        _persist_extraction(session, source_version, source.title, extraction)
         source_version.processing_status = "processed"
         session.commit()
         return ProcessingResult("created", str(source_version.id), len(extraction.sections))
@@ -89,7 +92,7 @@ def _extract(document_family: str, raw_content: bytes) -> ExtractionResult:
 
 
 def _persist_extraction(
-    session: Session, source_version: SourceVersion, extraction: ExtractionResult
+    session: Session, source_version: SourceVersion, source_title: str, extraction: ExtractionResult
 ) -> None:
     """Save normalized text, citation anchors, and one section-preserving chunk per anchor."""
     session.add(
@@ -115,12 +118,20 @@ def _persist_extraction(
         session.add(anchor)
         session.flush()
         # Chunk equals section in this first slice, preserving heading, conditions, and tables.
+        search_text = section.search_text or section.text
+        # A document title is useful for source-identification queries, but including it in
+        # every chunk would create duplicate lexical matches. Attach it to the root anchor only.
+        if section.ordinal == 1:
+            search_text = f"{source_title}\n{section.display_title}\n{search_text}"
+        else:
+            search_text = f"{section.display_title}\n{search_text}"
         session.add(
             Chunk(
                 source_version_id=source_version.id,
                 source_anchor_id=anchor.id,
                 ordinal=section.ordinal,
                 text=f"{section.display_title}\n{section.text}",
+                search_text=search_text,
                 character_count=len(section.display_title) + 1 + len(section.text),
             )
         )
