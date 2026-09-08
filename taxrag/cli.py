@@ -59,17 +59,31 @@ def main() -> None:
         with SessionLocal() as session:
             results = run_retrieval_evals(session, cases)
         required_results = [result for result in results if result.expected_recall_at_three]
-        known_gap_results = [result for result in results if not result.expected_recall_at_three]
         passed = sum(result.passed_at_three for result in required_results)
+        preferred_results = [result for result in results if result.preferred_at_three is not None]
+        preferred_passed = sum(result.preferred_at_three for result in preferred_results)
         for result in results:
-            rank = result.actual_rank if result.actual_rank is not None else "not found"
+            rank = result.acceptable_rank if result.acceptable_rank is not None else "outside top 3"
             expectation = "required" if result.expected_recall_at_three else "known lexical gap"
             print(
-                f"{result.case_id}: expected {result.expected_anchor_key}; "
+                f"{result.case_id}: acceptable {', '.join(result.acceptable_anchor_keys)}; "
                 f"rank {rank}; {expectation}"
             )
+            if result.preferred_anchor_keys:
+                preferred_rank = (
+                    result.preferred_rank if result.preferred_rank is not None else "outside top 3"
+                )
+                print(
+                    f"   preferred {', '.join(result.preferred_anchor_keys)}; "
+                    f"rank {preferred_rank}"
+                )
         print(f"Recall@3 (required): {passed}/{len(required_results)} ({passed / len(required_results):.0%})")
-        print(f"Known lexical gaps: {len(known_gap_results)}")
+        if preferred_results:
+            print(
+                "Preferred-source recall@3: "
+                f"{preferred_passed}/{len(preferred_results)} "
+                f"({preferred_passed / len(preferred_results):.0%})"
+            )
 
 
 if __name__ == "__main__":

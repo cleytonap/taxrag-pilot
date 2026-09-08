@@ -13,27 +13,37 @@ from taxrag.retrieval import search_chunks
 
 @dataclass(frozen=True)
 class RetrievalEvalCase:
-    """A question paired with the citation anchor retrieval is expected to return."""
+    """A question with acceptable and optionally preferred citation anchors."""
 
     case_id: str
     question: str
-    expected_anchor_key: str
+    acceptable_anchor_keys: tuple[str, ...]
+    preferred_anchor_keys: tuple[str, ...] = ()
     expected_recall_at_three: bool = True
 
 
 @dataclass(frozen=True)
 class RetrievalEvalResult:
-    """The rank outcome for one retrieval evaluation case."""
+    """The acceptable-support and preferred-source rank outcomes for one case."""
 
     case_id: str
-    expected_anchor_key: str
-    actual_rank: int | None
+    acceptable_anchor_keys: tuple[str, ...]
+    preferred_anchor_keys: tuple[str, ...]
+    acceptable_rank: int | None
+    preferred_rank: int | None
     expected_recall_at_three: bool
 
     @property
     def passed_at_three(self) -> bool:
-        """Return whether the expected anchor appeared in the first three results."""
-        return self.actual_rank is not None and self.actual_rank <= 3
+        """Return whether any acceptable support anchor appeared in the first three results."""
+        return self.acceptable_rank is not None and self.acceptable_rank <= 3
+
+    @property
+    def preferred_at_three(self) -> bool | None:
+        """Return preferred-source recall when the case declares a source preference."""
+        if not self.preferred_anchor_keys:
+            return None
+        return self.preferred_rank is not None and self.preferred_rank <= 3
 
     @property
     def outcome_matches_expectation(self) -> bool:
@@ -48,9 +58,18 @@ def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
         if not line.strip():
             continue
         record = json.loads(line)
-        required = {"id", "question", "expected_anchor_key"}
+        required = {"id", "question", "acceptable_anchor_keys"}
         if not required <= record.keys():
             raise ValueError(f"Evaluation fixture line {line_number} is missing a required field")
+        acceptable = _load_anchor_keys(record["acceptable_anchor_keys"], line_number, "acceptable")
+        preferred = _load_anchor_keys(
+            record.get("preferred_anchor_keys", []), line_number, "preferred", allow_empty=True
+        )
+        if not set(preferred) <= set(acceptable):
+            raise ValueError(
+                f"Evaluation fixture line {line_number} has preferred anchors outside "
+                "acceptable_anchor_keys"
+            )
         expected_recall_at_three = record.get("expected_recall_at_three", True)
         if not isinstance(expected_recall_at_three, bool):
             raise TypeError(f"Evaluation fixture line {line_number} has an invalid expectation flag")
@@ -58,7 +77,8 @@ def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
             RetrievalEvalCase(
                 case_id=record["id"],
                 question=record["question"],
-                expected_anchor_key=record["expected_anchor_key"],
+                acceptable_anchor_keys=acceptable,
+                preferred_anchor_keys=preferred,
                 expected_recall_at_three=expected_recall_at_three,
             )
         )
@@ -67,21 +87,52 @@ def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
     return cases
 
 
+def _load_anchor_keys(
+    value: object, line_number: int, label: str, *, allow_empty: bool = False
+) -> tuple[str, ...]:
+    """Validate a duplicate-free fixture anchor list, requiring content unless optional."""
+    if (
+        not isinstance(value, list)
+        or (not value and not allow_empty)
+        or not all(isinstance(item, str) and item for item in value)
+    ):
+        raise TypeError(
+            f"Evaluation fixture line {line_number} has invalid {label}_anchor_keys"
+        )
+    if len(set(value)) != len(value):
+        raise ValueError(
+            f"Evaluation fixture line {line_number} has duplicate {label}_anchor_keys"
+        )
+    return tuple(value)
+
+
 def run_retrieval_evals(session: Session, cases: list[RetrievalEvalCase]) -> list[RetrievalEvalResult]:
-    """Measure the rank of each expected anchor using the current lexical retriever."""
+    """Measure acceptable support and preferred-source ranks using the lexical retriever."""
     results = []
     for case in cases:
         matches = search_chunks(session, case.question, limit=3)
-        actual_rank = next(
-            (rank for rank, match in enumerate(matches, start=1) if match.anchor_key == case.expected_anchor_key),
-            None,
-        )
+        acceptable_rank = _first_anchor_rank(matches, case.acceptable_anchor_keys)
+        preferred_rank = _first_anchor_rank(matches, case.preferred_anchor_keys)
         results.append(
             RetrievalEvalResult(
                 case_id=case.case_id,
-                expected_anchor_key=case.expected_anchor_key,
-                actual_rank=actual_rank,
+                acceptable_anchor_keys=case.acceptable_anchor_keys,
+                preferred_anchor_keys=case.preferred_anchor_keys,
+                acceptable_rank=acceptable_rank,
+                preferred_rank=preferred_rank,
                 expected_recall_at_three=case.expected_recall_at_three,
             )
         )
     return results
+
+
+def _first_anchor_rank(matches: list[object], expected_anchors: tuple[str, ...]) -> int | None:
+    """Return the first result rank matching one anchor in an explicitly allowed set."""
+    return next(
+        (
+            rank
+            for rank, match in enumerate(matches, start=1)
+            if getattr(match, "anchor_key", None) in expected_anchors
+        ),
+        None,
+    )

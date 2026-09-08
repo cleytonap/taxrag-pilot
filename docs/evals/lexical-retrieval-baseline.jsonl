@@ -1,9 +1,9 @@
-{"id":"lex-001","question":"Qual é o limite de rendimentos tributáveis para declarar o IRPF 2026?","expected_anchor_key":"limites-de-valor-para-o-exercicio-2026--03"}
-{"id":"lex-002","question":"Recebi rendimentos isentos. Qual é o limite para entregar a declaração?","expected_anchor_key":"limites-de-valor-para-o-exercicio-2026--03"}
-{"id":"lex-003","question":"Em quais situações sou obrigado a declarar o imposto de renda?","expected_anchor_key":"voce-esta-obrigado-se--02"}
-{"id":"lex-004","question":"Posso enviar a declaração mesmo sem ser obrigado para pedir restituição?","expected_anchor_key":"quem-nao-precisa-entregar-a-declaracao--05"}
-{"id":"lex-005","question":"Quem pode ser meu dependente no imposto de renda?","expected_anchor_key":"quem-pode-ser-dependente--06"}
-{"id":"lex-006","question":"Como funciona a declaração em conjunto?","expected_anchor_key":"quem-pode-declarar-em-conjunto--07"}
-{"id":"lex-007","question":"Quem é considerado residente no Brasil para o imposto de renda?","expected_anchor_key":"quem-e-considerado-residente-no-brasil--08"}
-{"id":"lex-008","question":"Onde encontro as normas do exercício 2026?","expected_anchor_key":"legislacao--04"}
-{"id":"lex-009","question":"Qual instrução normativa trata da declaração do exercício 2026?","expected_anchor_key":"legislacao--04","expected_recall_at_three":false}
+{"id":"lex-001","question":"Qual é o limite de rendimentos tributáveis para declarar o IRPF 2026?","acceptable_anchor_keys":["art-2-inciso-i","limites-de-valor-para-o-exercicio-2026--03","question-001--p23"],"preferred_anchor_keys":["art-2-inciso-i"]}
+{"id":"lex-002","question":"Recebi rendimentos isentos. Qual é o limite para entregar a declaração?","acceptable_anchor_keys":["art-2-inciso-ii","limites-de-valor-para-o-exercicio-2026--03","question-001--p23"],"preferred_anchor_keys":["art-2-inciso-ii"]}
+{"id":"lex-003","question":"Em quais situações sou obrigado a declarar o imposto de renda?","acceptable_anchor_keys":["question-001--p23","voce-esta-obrigado-se--02"],"preferred_anchor_keys":["question-001--p23"]}
+{"id":"lex-004","question":"Posso enviar a declaração mesmo sem ser obrigado para pedir restituição?","acceptable_anchor_keys":["art-2-paragrafo-2","quem-nao-precisa-entregar-a-declaracao--05","question-002--p24"]}
+{"id":"lex-005","question":"Quem pode ser meu dependente no imposto de renda?","acceptable_anchor_keys":["quem-pode-ser-dependente--06"]}
+{"id":"lex-006","question":"Como funciona a declaração em conjunto?","acceptable_anchor_keys":["quem-pode-declarar-em-conjunto--07"]}
+{"id":"lex-007","question":"Quem é considerado residente no Brasil para o imposto de renda?","acceptable_anchor_keys":["quem-e-considerado-residente-no-brasil--08"]}
+{"id":"lex-008","question":"Onde encontro as normas do exercício 2026?","acceptable_anchor_keys":["art-2-caput","legislacao--04"],"preferred_anchor_keys":["art-2-caput"]}
+{"id":"lex-009","question":"Qual instrução normativa trata da declaração do exercício 2026?","acceptable_anchor_keys":["art-2-caput","question-001--p23"],"preferred_anchor_keys":["art-2-caput"]}

@@ -14,6 +14,13 @@ Use this set during normal development. It may guide changes to extraction, chun
 
 The current `lexical-retrieval-baseline.jsonl` is a development set. Known failure cases are explicitly labeled rather than silently removed.
 
+Each retrieval case declares `acceptable_anchor_keys`: exact passages that can support the
+question. A case may also declare the subset `preferred_anchor_keys`, used to measure source
+quality separately from basic support retrieval. For example, a current normative inciso can be
+preferred over an explanatory page, while the explanatory page remains acceptable when it directly
+supports the same answer. Do not treat preferred-source recall as a release gate until its labels
+have been reviewed for directness, currency, and authority.
+
 Re-run development retrieval evaluations whenever the source corpus changes. A source expansion
 can reveal both genuine ranking regressions and overly narrow exact-anchor expectations; record
 and classify each change rather than changing labels merely to restore a passing score.
