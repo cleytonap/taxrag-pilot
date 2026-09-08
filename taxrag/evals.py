@@ -8,7 +8,8 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from taxrag.retrieval import search_chunks
+from taxrag.embeddings import EmbeddingProvider
+from taxrag.retrieval import RetrievalStrategy, search_chunks
 
 
 @dataclass(frozen=True)
@@ -106,11 +107,18 @@ def _load_anchor_keys(
     return tuple(value)
 
 
-def run_retrieval_evals(session: Session, cases: list[RetrievalEvalCase]) -> list[RetrievalEvalResult]:
-    """Measure acceptable support and preferred-source ranks using the lexical retriever."""
+def run_retrieval_evals(
+    session: Session,
+    cases: list[RetrievalEvalCase],
+    strategy: RetrievalStrategy = "lexical",
+    embedding_provider: EmbeddingProvider | None = None,
+) -> list[RetrievalEvalResult]:
+    """Measure one explicit retrieval strategy against acceptable and preferred anchors."""
     results = []
     for case in cases:
-        matches = search_chunks(session, case.question, limit=3)
+        matches = search_chunks(
+            session, case.question, limit=3, strategy=strategy, embedding_provider=embedding_provider
+        )
         acceptable_rank = _first_anchor_rank(matches, case.acceptable_anchor_keys)
         preferred_rank = _first_anchor_rank(matches, case.preferred_anchor_keys)
         results.append(

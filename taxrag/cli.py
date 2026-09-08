@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from taxrag.config import settings
 from taxrag.database import SessionLocal
+from taxrag.embeddings import configured_embedding_provider, embed_latest_source_version
 from taxrag.evals import load_retrieval_eval_cases, run_retrieval_evals
 from taxrag.ingestion import ingest_source
 from taxrag.processing import process_latest_source_version
-from taxrag.retrieval import search_chunks
+from taxrag.retrieval import SUPPORTED_STRATEGIES, search_chunks
 from taxrag.sources import APPROVED_SOURCES
 
 
@@ -24,16 +26,33 @@ def main() -> None:
         "process-source", help="Extract and chunk the newest stored source version"
     )
     process_parser.add_argument("source_key", choices=sorted(APPROVED_SOURCES))
-    search_parser = subparsers.add_parser("search", help="Search processed chunks with lexical retrieval")
+    embed_parser = subparsers.add_parser(
+        "embed-source", help="Generate missing semantic embeddings for one processed source"
+    )
+    embed_parser.add_argument("source_key", choices=sorted(APPROVED_SOURCES))
+    search_parser = subparsers.add_parser(
+        "search", help="Search processed chunks with a selected retrieval strategy"
+    )
     search_parser.add_argument("question")
     search_parser.add_argument("--limit", type=int, default=3)
+    search_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="lexical")
     eval_parser = subparsers.add_parser(
-        "eval-retrieval", help="Run the versioned lexical retrieval evaluation fixture"
+        "eval-retrieval", help="Evaluate one selected retrieval strategy against the versioned fixture"
     )
     eval_parser.add_argument(
         "--fixture", type=Path, default=Path("docs/evals/lexical-retrieval-baseline.jsonl")
     )
+    eval_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="lexical")
     args = parser.parse_args()
+
+    requires_embeddings = args.command == "embed-source" or (
+        args.command in {"search", "eval-retrieval"} and args.strategy == "semantic"
+    )
+    if requires_embeddings and not settings.openai_api_key:
+        parser.error(
+            "OPENAI_API_KEY is required for semantic embeddings. "
+            "Set it in the command environment before using semantic retrieval."
+        )
 
     if args.command == "ingest-source":
         # A session is scoped to one command so connections are always released.
@@ -47,21 +66,39 @@ def main() -> None:
             f"Processing source version {result.source_version_id}: "
             f"{result.outcome} ({result.chunk_count} chunks)"
         )
+    elif args.command == "embed-source":
+        with SessionLocal() as session:
+            result = embed_latest_source_version(
+                session, args.source_key, configured_embedding_provider()
+            )
+        print(
+            f"Embedding source version {result.source_version_id}: "
+            f"{result.outcome} ({result.embedded_chunk_count} chunks)"
+        )
     elif args.command == "search":
         with SessionLocal() as session:
-            matches = search_chunks(session, args.question, args.limit)
+            matches = search_chunks(session, args.question, args.limit, args.strategy)
         for rank, match in enumerate(matches, start=1):
-            print(
-                f"{rank}. {match.anchor_key} "
-                f"(score {match.score:.4f}; lexical {match.lexical_score:.4f}; "
-                f"authority {match.authority_level})"
-            )
+            score_details = [f"score {match.score:.4f}"]
+            if match.lexical_score is not None:
+                score_details.append(f"lexical {match.lexical_score:.4f}")
+            if match.semantic_score is not None:
+                score_details.append(f"semantic {match.semantic_score:.4f}")
+            score_details.append(f"authority {match.authority_level}")
+            print(f"{rank}. {match.anchor_key} ({'; '.join(score_details)})")
             print(f"   {match.anchor_title} - {match.source_title}")
             print(f"   {match.canonical_url}")
     elif args.command == "eval-retrieval":
         cases = load_retrieval_eval_cases(args.fixture)
         with SessionLocal() as session:
-            results = run_retrieval_evals(session, cases)
+            results = run_retrieval_evals(
+                session,
+                cases,
+                strategy=args.strategy,
+                embedding_provider=(
+                    configured_embedding_provider() if args.strategy == "semantic" else None
+                ),
+            )
         required_results = [result for result in results if result.expected_recall_at_three]
         passed = sum(result.passed_at_three for result in required_results)
         preferred_results = [result for result in results if result.preferred_at_three is not None]
@@ -81,7 +118,10 @@ def main() -> None:
                     f"   preferred {', '.join(result.preferred_anchor_keys)}; "
                     f"rank {preferred_rank}"
                 )
-        print(f"Recall@3 (required): {passed}/{len(required_results)} ({passed / len(required_results):.0%})")
+        print(
+            f"Recall@3 ({args.strategy}, required): "
+            f"{passed}/{len(required_results)} ({passed / len(required_results):.0%})"
+        )
         if preferred_results:
             print(
                 "Preferred-source recall@3: "

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+EMBEDDING_DIMENSIONS = 1536
 
 
 def _object_storage_root() -> Path:
@@ -17,8 +18,13 @@ def _object_storage_root() -> Path:
 
 @dataclass(frozen=True)
 class Settings:
+    """Runtime settings for storage, database access, and optional embedding generation."""
+
     database_url: str
     object_storage_root: Path
+    openai_api_key: str | None
+    embedding_model: str
+    embedding_dimensions: int
 
 
 settings = Settings(
@@ -26,4 +32,9 @@ settings = Settings(
         "DATABASE_URL", "postgresql+psycopg://taxrag:taxrag@localhost:5432/taxrag"
     ),
     object_storage_root=_object_storage_root(),
+    openai_api_key=os.getenv("OPENAI_API_KEY"),
+    embedding_model=os.getenv("TAXRAG_EMBEDDING_MODEL", "text-embedding-3-small"),
+    # This initial pgvector column is deliberately fixed at the model's native size.
+    # A different size requires an explicit schema/model migration, not an env toggle.
+    embedding_dimensions=EMBEDDING_DIMENSIONS,
 )

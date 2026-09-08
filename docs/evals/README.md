@@ -59,3 +59,28 @@ Target 40-60 cases after the source inventory is complete. Cover:
 - grounded-answer support: each material claim is supported by the cited excerpt
 - abstention quality: unsupported or individualized requests are safely narrowed or declined
 - year/period accuracy: answer does not apply a rule to an unsupported exercise or calendar year
+
+## Retrieval Comparison Protocol
+
+Compare retrieval approaches on the same development fixture before combining them. Record both
+required `acceptable_anchor_keys` recall@3 and optional `preferred_anchor_keys` recall@3; they
+answer different questions:
+
+- acceptable recall asks whether the system found a passage that can support the answer;
+- preferred-source recall asks whether it found the most direct/current/authoritative passage when
+  the fixture makes that distinction.
+
+The current sequence is intentionally incremental:
+
+1. `lexical`: PostgreSQL Portuguese full-text rank only. This is the stable reference score.
+2. `lexical_authority`: the existing bounded authority multiplier, reported separately as an
+   experiment rather than folded into the baseline.
+3. `semantic`: cosine similarity over model-versioned chunk embeddings. It tests paraphrase and
+   vocabulary-mismatch retrieval without lexical ranking assistance.
+4. A future hybrid candidate: compare a named fusion rule such as Reciprocal Rank Fusion (RRF),
+   weighted score fusion, or candidate-union plus a reranker. Do not call any mixed method simply
+   "hybrid" without recording its exact rule and parameters.
+
+Do not choose weights or source-preference rules merely to improve a few development examples.
+The development fixture is a diagnostic tool: it shows where a method succeeds or fails. A frozen
+holdout set is the eventual decision gate once the V1 source inventory and labels are complete.

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -97,3 +98,17 @@ class Chunk(Base):
     text: Mapped[str] = mapped_column(Text)
     search_text: Mapped[str] = mapped_column(Text)
     character_count: Mapped[int] = mapped_column()
+
+
+class ChunkEmbedding(Base):
+    """One model-versioned semantic representation of a retrievable chunk."""
+
+    __tablename__ = "chunk_embeddings"
+    __table_args__ = (UniqueConstraint("chunk_id", "model", "dimensions"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    chunk_id: Mapped[UUID] = mapped_column(ForeignKey("chunks.id"), index=True)
+    model: Mapped[str] = mapped_column(String(100))
+    dimensions: Mapped[int] = mapped_column()
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

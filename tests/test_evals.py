@@ -42,7 +42,7 @@ def test_retrieval_evaluation_tracks_acceptable_and_preferred_ranks(monkeypatch:
     monkeypatch.setattr(
         evals,
         "search_chunks",
-        lambda _session, _question, limit: [
+        lambda _session, _question, limit, **_kwargs: [
             SimpleNamespace(anchor_key="question-001--p23"),
             SimpleNamespace(anchor_key="art-2-inciso-i"),
         ][:limit],
@@ -54,3 +54,27 @@ def test_retrieval_evaluation_tracks_acceptable_and_preferred_ranks(monkeypatch:
     assert result.preferred_rank == 2
     assert result.passed_at_three is True
     assert result.preferred_at_three is True
+
+
+def test_retrieval_evaluation_forwards_the_selected_strategy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Evaluation labels cannot drift from the retrieval code actually being measured."""
+    cases = load_retrieval_eval_cases(FIXTURE_PATH)
+    observed: dict[str, object] = {}
+
+    def fake_search(_session: object, _question: str, limit: int, **kwargs: object) -> list[object]:
+        observed.update(kwargs)
+        return [SimpleNamespace(anchor_key="art-2-inciso-i")][:limit]
+
+    monkeypatch.setattr(evals, "search_chunks", fake_search)
+    provider = SimpleNamespace(model="test", dimensions=1536)
+
+    run_retrieval_evals(
+        None,  # type: ignore[arg-type]
+        [cases[0]],
+        strategy="semantic",
+        embedding_provider=provider,
+    )
+
+    assert observed == {"strategy": "semantic", "embedding_provider": provider}
