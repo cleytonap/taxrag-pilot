@@ -9,8 +9,8 @@ from dataclasses import dataclass
 import pymupdf
 from bs4 import BeautifulSoup, Tag
 
-EXTRACTOR_NAME = "receita-guidance-html"
-EXTRACTOR_VERSION = "2"
+EXTRACTOR_NAME = "source-family-extractors"
+EXTRACTOR_VERSION = "3"
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,111 @@ def extract_receita_guidance_html(html: bytes) -> ExtractionResult:
 
     normalized_text = "\n\n".join(f"{section.display_title}\n{section.text}" for section in sections)
     return ExtractionResult(normalized_text=normalized_text, sections=sections)
+
+
+DOU_ARTICLE_TWO = re.compile(r"^Art\. 2(?:º|o)\s+(?P<text>.+)$", re.IGNORECASE)
+DOU_ARTICLE = re.compile(r"^Art\.\s+\d+(?:º|o)?\s+", re.IGNORECASE)
+DOU_PARAGRAPH = re.compile(r"^§\s*(?P<number>\d+)º\s+(?P<text>.+)$")
+DOU_INCISO = re.compile(r"^(?P<roman>[IVXLCDM]+)\s*-\s+(?P<text>.+)$")
+DOU_ALINEA = re.compile(r"^[a-z]\)\s+.+$", re.IGNORECASE)
+
+
+def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
+    """Extract Art. 2 legal units from the official DOU HTML publication.
+
+    Each inciso repeats the article caput and, when applicable, its paragraph lead-in.
+    This makes a retrieved citation understandable without relying on neighboring chunks.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    paragraphs = [_text(element) for element in soup.select("p.dou-paragraph")]
+    article_index = next(
+        (index for index, text in enumerate(paragraphs) if DOU_ARTICLE_TWO.match(text)), None
+    )
+    if article_index is None:
+        raise ValueError("DOU HTML does not contain Art. 2 of IN RFB 2.312/2026")
+
+    article_match = DOU_ARTICLE_TWO.match(paragraphs[article_index])
+    assert article_match is not None
+    article_caput = paragraphs[article_index]
+    sections = [
+        ExtractedSection(
+            anchor_key="art-2-caput",
+            display_title="Art. 2, caput",
+            ordinal=1,
+            text=article_caput,
+        )
+    ]
+    current_paragraph_label: str | None = None
+    current_paragraph_text: str | None = None
+    current_inciso_label: str | None = None
+    current_inciso_blocks: list[str] = []
+
+    def append_inciso() -> None:
+        """Persist the current inciso with all necessary article and paragraph context."""
+        if current_inciso_label is None:
+            return
+        context = [article_caput]
+        if current_paragraph_text is not None:
+            context.append(current_paragraph_text)
+        context.extend(current_inciso_blocks)
+        label = (
+            f"Art. 2, {current_paragraph_label}, inciso {current_inciso_label}"
+            if current_paragraph_label
+            else f"Art. 2, inciso {current_inciso_label}"
+        )
+        key = (
+            f"art-2-{_paragraph_key(current_paragraph_label)}-inciso-"
+            f"{current_inciso_label.lower()}"
+            if current_paragraph_label
+            else f"art-2-inciso-{current_inciso_label.lower()}"
+        )
+        sections.append(
+            ExtractedSection(
+                anchor_key=key,
+                display_title=label,
+                ordinal=len(sections) + 1,
+                text="\n".join(context),
+            )
+        )
+
+    for text in paragraphs[article_index + 1 :]:
+        if DOU_ARTICLE.match(text):
+            break
+        paragraph_match = DOU_PARAGRAPH.match(text)
+        if paragraph_match:
+            append_inciso()
+            current_inciso_label = None
+            current_inciso_blocks = []
+            current_paragraph_label = f"§ {paragraph_match.group('number')}º"
+            current_paragraph_text = text
+            sections.append(
+                ExtractedSection(
+                    anchor_key=f"art-2-{_paragraph_key(current_paragraph_label)}",
+                    display_title=f"Art. 2, {current_paragraph_label}",
+                    ordinal=len(sections) + 1,
+                    text=f"{article_caput}\n{text}",
+                )
+            )
+            continue
+        inciso_match = DOU_INCISO.match(text)
+        if inciso_match:
+            append_inciso()
+            current_inciso_label = inciso_match.group("roman")
+            current_inciso_blocks = [text]
+            continue
+        if current_inciso_label is not None:
+            current_inciso_blocks.append(text)
+        elif DOU_ALINEA.match(text):
+            raise ValueError("DOU alinea appeared without a parent inciso")
+
+    append_inciso()
+    normalized_text = "\n\n".join(f"{section.display_title}\n{section.text}" for section in sections)
+    return ExtractionResult(normalized_text=normalized_text, sections=sections)
+
+
+def _paragraph_key(label: str) -> str:
+    """Convert a visible paragraph label such as ``§ 1º`` into a stable key fragment."""
+    return f"paragrafo-{label.split()[1].rstrip('º')}"
 
 
 # The official PDF uses an em dash. Some valid PDF text extractors expose the same

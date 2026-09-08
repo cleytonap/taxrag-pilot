@@ -27,12 +27,13 @@ Applicable calendar year: 2025
 - applicable period: exercise 2026, calendar year 2025
 - required extraction anchors: `Art. 2`, each inciso, and each paragraph
 - refresh policy: once before each ingestion run and monthly while this exercise is active
-- admission status: pending automated-access verification
+- admission status: active; first official version retrieved and processed on `2026-09-08`
 - access note: the Receita Normas URL is a JavaScript application shell, so it is not suitable for
-  text extraction. The DOU publication is the preferred static official representation. On
-  2026-09-04, automated requests from the development environment were disconnected before a
-  response; do not activate this source in the worker until a reproducible retrieval method and
-  parser fixture exist.
+  text extraction. The DOU publication is the preferred static official representation. The DOU
+  disconnected the worker's original generic client but returned its public HTML when the request
+  included explicit browser-compatible `User-Agent`, `Accept`, and `Accept-Language` headers.
+  Those source-specific headers are recorded in the executable source registry and covered by the
+  raw-artifact hash retained for each retrieval.
 
 ### `irpf-2026-quem-deve-declarar`
 

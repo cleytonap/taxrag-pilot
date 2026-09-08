@@ -82,3 +82,9 @@ as a reason to relabel cases until we distinguish two concerns:
 
 The next retrieval-quality slice must introduce permitted-support sets in evaluation cases and
 compare heading-weighted ranking before this baseline is used as a release gate again.
+
+After the IN RFB 2.312/2026 DOU source added eighteen legal chunks on 2026-09-08, the required
+development score remained `6/8` (75%). A threshold query retrieved the primary legal anchor
+`art-2-inciso-i`, but only at rank five. This is evidence that the next slice must evaluate both
+acceptable support and authority preference; source authority exists in metadata but is not yet a
+retrieval-ranking signal.

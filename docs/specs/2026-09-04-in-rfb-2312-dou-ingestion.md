@@ -1,7 +1,7 @@
 # IN RFB 2.312/2026: DOU Ingestion And Legal Anchors
 
 Date: 2026-09-04
-Status: Planned
+Status: Implemented
 
 ## Problem
 
@@ -73,3 +73,20 @@ a production ingestion source.
 - The immutable raw artifact is stored and linked to a source version.
 - `Art. 2` legal subdivisions produce stable, user-visible citation anchors.
 - Tests cover the parser using a captured official fixture and processing is idempotent.
+
+## Implementation Evidence
+
+Validated locally on 2026-09-08:
+
+- The DOU URL returned `200` with `text/html;charset=UTF-8` when the source-specific,
+  browser-compatible request headers were supplied. The generic client disconnect was therefore
+  an access-policy behavior, not a missing document.
+- The worker stored the official raw HTML at
+  `raw/irpf-2026-in-rfb-2312/f0a12419b3a23a768ceece8e0413e811fcfc63543457fd145ea13e2f9cefaf58/original.html`.
+- Processing created eighteen legal anchors: the `Art. 2` caput, twelve caput incisos, three
+  paragraphs, and the two incisos of `§ 1º`. A second processing run returned `unchanged`.
+- Fixture tests verify that alíneas remain attached to their parent inciso and that every inciso
+  retains the article caput and, for `§ 1º`, its paragraph lead-in.
+- A lexical query about the `R$ 35.584,00` threshold retrieved `Art. 2, inciso I` at rank five.
+  The normative source is present, but the current lexical ranking does not yet prefer higher
+  authority sources; this is intentionally deferred to the next retrieval-evaluation slice.

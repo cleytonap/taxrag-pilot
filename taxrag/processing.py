@@ -12,6 +12,7 @@ from taxrag.extraction import (
     EXTRACTOR_NAME,
     EXTRACTOR_VERSION,
     ExtractionResult,
+    extract_dou_in_rfb_2312_html,
     extract_receita_guidance_html,
     extract_receita_questions_answers_pdf,
 )
@@ -82,6 +83,8 @@ def _extract(document_family: str, raw_content: bytes) -> ExtractionResult:
         return extract_receita_guidance_html(raw_content)
     if document_family == "receita_questions_answers_pdf":
         return extract_receita_questions_answers_pdf(raw_content)
+    if document_family == "dou_norm_html":
+        return extract_dou_in_rfb_2312_html(raw_content)
     raise ValueError(f"No extraction adapter exists for document family {document_family}")
 
 

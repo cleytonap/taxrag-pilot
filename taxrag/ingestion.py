@@ -80,7 +80,10 @@ def _fetch_source(approved_source: ApprovedSource) -> httpx.Response:
     with httpx.Client(
         follow_redirects=True,
         timeout=30.0,
-        headers={"User-Agent": "TaxRAG learning project source ingestor"},
+        headers={
+            "User-Agent": "TaxRAG learning project source ingestor",
+            **approved_source.request_headers,
+        },
     ) as client:
         response = client.get(approved_source.canonical_url)
         response.raise_for_status()
