@@ -23,7 +23,7 @@ class EmbeddingProvider(Protocol):
         """Return one vector for each non-empty input text, preserving input order."""
 
 
-class OpenAIEmbeddingProvider:
+class OpenAIEmbeddingProvider(EmbeddingProvider):
     """OpenAI embeddings adapter for the configured first semantic baseline model."""
 
     def __init__(self, api_key: str | None, model: str, dimensions: int) -> None:

@@ -37,7 +37,9 @@ semantic baseline.
 ## Design Choice
 
 Use `text-embedding-3-small` with its native 1536 dimensions through an explicit
-`EmbeddingProvider` interface. The official OpenAI embeddings endpoint represents text as vectors
+`EmbeddingProvider` protocol. `OpenAIEmbeddingProvider` explicitly inherits that protocol; Python
+has no Java-style `implements` keyword, while other compatible providers can still satisfy the
+same contract structurally. The official OpenAI embeddings endpoint represents text as vectors
 for relatedness and search, and the `text-embedding-3` models support a dimensions parameter.
 The chosen model is the low-cost first comparator, not a permanent provider commitment.
 
