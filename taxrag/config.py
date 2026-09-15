@@ -6,8 +6,18 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EMBEDDING_DIMENSIONS = 1536
+
+
+def _load_local_env() -> None:
+    """Load the gitignored project `.env` for local development without overriding deployment env."""
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+
+
+_load_local_env()
 
 
 def _object_storage_root() -> Path:

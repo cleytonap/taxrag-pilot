@@ -1,7 +1,7 @@
 # Semantic Retrieval Baseline
 
 Date: 2026-09-08
-Status: Foundation Implemented; Evaluation Blocked on API Key
+Status: Implemented; Hybrid Comparison Not Started
 
 ## Problem
 
@@ -83,7 +83,7 @@ Validated locally on 2026-09-08:
 - Migration `20260908_02` created the empty, additive `chunk_embeddings` table with a 1536-
   dimension pgvector column and model/dimension provenance. No existing source, anchor, or chunk
   data was changed.
-- The offline suite has 21 passing tests. It covers provider ordering and malformed-response
+- The offline suite has 22 passing tests. It covers provider ordering and malformed-response
   rejection, missing-key failure, explicit retrieval strategies, and strategy forwarding from the
   evaluation runner.
 - The same nine-case development fixture was run before semantic embedding generation:
@@ -96,7 +96,24 @@ Validated locally on 2026-09-08:
 The authority experiment has no measured advantage on this fixture, so it remains separately
 named and is not substituted for the lexical reference score.
 
-Semantic results are correctly not recorded yet: `OPENAI_API_KEY` is not configured in this local
-environment. Once configured, embed each active source with `embed-source`, then run
-`eval-retrieval --strategy semantic` against this exact fixture. Only after reviewing that
-semantic-only comparison should we implement and compare a named hybrid approach.
+## Semantic Evaluation
+
+Validated locally on 2026-09-15 using `text-embedding-3-small` after embedding all 32 processed
+chunks (8 Receita guidance HTML, 6 official Q&A PDF, and 18 IN RFB 2.312/2026 DOU chunks).
+
+| Strategy | Required acceptable recall@3 | Preferred-source recall@3 |
+| --- | --- | --- |
+| `lexical` | 8/9 (89%) | 2/5 (40%) |
+| `lexical_authority` | 8/9 (89%) | 2/5 (40%) |
+| `semantic` | 9/9 (100%) | 4/5 (80%) |
+
+This is encouraging but not a final model-selection result: all three scores use the same small
+development fixture, which we have inspected while building. It does establish that semantic-only
+retrieval is a valid next comparator and improves the known vocabulary-mismatch gap.
+
+For local development, configuration now loads the ignored project-root `.env` automatically with
+`python-dotenv`. Process environment variables still take precedence, so Docker, CI, and production
+configuration remain explicit and authoritative.
+
+Only after reviewing this semantic-only comparison should we implement and compare a named hybrid
+approach.
