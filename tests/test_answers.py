@@ -75,6 +75,15 @@ def test_validator_rejects_quote_that_is_not_in_the_cited_chunk() -> None:
         validate_answer_draft(_draft(quote="A pessoa fica dispensada em qualquer situação."), [_chunk()])
 
 
+def test_validator_identifies_the_exact_claim_and_citation_that_failed() -> None:
+    """A local debug trace must point to the failing citation, not only the whole answer."""
+    with pytest.raises(
+        AnswerValidationError,
+        match=r"Claim 1, citation 1 for chunk chunk-1: Citation quote does not appear",
+    ):
+        validate_answer_draft(_draft(quote="A pessoa fica dispensada em qualquer situação."), [_chunk()])
+
+
 def test_validator_rejects_an_abstention_with_factual_claims() -> None:
     """Abstention is a safety outcome, not a way to attach an unsupported answer."""
     invalid = AnswerDraft(

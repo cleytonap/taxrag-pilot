@@ -58,3 +58,8 @@ The deterministic provider completed the full lexical path on 2026-09-16. It fai
 structural cases because it deliberately cites only the first retrieved chunk and never abstains.
 That is expected: this provider is a wiring double, not an answer-quality baseline. The command
 defaults to lexical retrieval so this check makes no embedding or answer-model API calls.
+
+The live `R$ 3.000,00 por mês` failure became `answer-005`. It exposed a model-generated
+ellipsis in a supposedly literal quote. The fixture records the expected annual calculation,
+material conditions, non-repetition requirement, and the prohibition on ellipses in displayed
+quotes; no fuzzy matching was added.

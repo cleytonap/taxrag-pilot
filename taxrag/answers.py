@@ -277,17 +277,24 @@ def validate_answer_draft(
 
     chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
     validated_claims = []
-    for claim in draft.claims:
+    for claim_index, claim in enumerate(draft.claims, start=1):
         if not claim.text.strip():
             raise AnswerValidationError("Answer claims must not be blank")
         if not claim.citations:
             raise AnswerValidationError("Every answer claim must include at least one citation")
         citations = []
-        for draft_citation in claim.citations:
+        for citation_index, draft_citation in enumerate(claim.citations, start=1):
             chunk = chunks_by_id.get(draft_citation.chunk_id)
             if chunk is None:
-                raise AnswerValidationError("Answer cited a chunk that was not retrieved")
-            _validate_quote(draft_citation.quote, chunk.chunk_text)
+                raise AnswerValidationError(
+                    f"Claim {claim_index}, citation {citation_index} cited a chunk that was not retrieved"
+                )
+            try:
+                _validate_quote(draft_citation.quote, chunk.chunk_text)
+            except AnswerValidationError as error:
+                raise AnswerValidationError(
+                    f"Claim {claim_index}, citation {citation_index} for chunk {chunk.chunk_id}: {error}"
+                ) from error
             citations.append(
                 Citation(
                     chunk_id=chunk.chunk_id,

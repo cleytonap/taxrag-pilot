@@ -92,7 +92,7 @@ def test_answer_fixture_has_reviewable_cases_and_an_abstention_case() -> None:
     """The answer fixture keeps subjective quality criteria visible rather than automating them."""
     cases = load_answer_eval_cases(ANSWER_FIXTURE_PATH)
 
-    assert len(cases) == 4
+    assert len(cases) == 5
     assert len({case.case_id for case in cases}) == len(cases)
     assert any(case.expected_abstain for case in cases)
     assert all(case.human_review_criteria for case in cases)

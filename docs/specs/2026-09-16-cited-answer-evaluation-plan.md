@@ -108,6 +108,18 @@ the validation reason, and the retrieved chunks to `stderr`. It is opt-in and mu
 shared logs or with sensitive questions. The default path continues to expose only the safe
 abstention result.
 
+## Quote-Rejection Finding
+
+The question `Recebi apenas 3 mil por mês no ano passado. Devo declarar?` produced two valid
+citations and one invalid supplementary citation. The invalid citation replaced omitted portions
+of a long official list with `...`; those characters are not a literal excerpt, so deterministic
+validation correctly rejected it. This is not evidence to introduce fuzzy quote matching: fuzzy
+matching could accept a modified monetary threshold, exception, or scope condition. The case is
+recorded as `answer-005` in the answer-development fixture. Future work should replace
+model-copied quotes with stable application-provided evidence excerpts or identifiers, and assess
+claim-level handling of a rejected supplementary citation before changing the all-or-nothing
+answer boundary.
+
 ## Test And Eval Plan
 
 - Unit-test structured-output parsing and rejection of a citation ID that was not retrieved.
