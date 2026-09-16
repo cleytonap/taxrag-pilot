@@ -15,7 +15,8 @@ several official Q&A clarifications have no executable retrieval check.
 - cover each substantive Art. 2 obligation condition, the three relevant exceptions, and two Q&A
   clarifications
 - use only already-ingested, active source anchors
-- keep `acceptable_anchor_keys` and `preferred_anchor_keys` semantics unchanged
+- keep `acceptable_anchor_keys` semantics unchanged and treat `preferred_anchor_keys` as an
+  optional citation-policy diagnostic
 - rerun lexical, semantic, and hybrid RRF retrieval without changing any retrieval implementation
 
 ## Out Of Scope
@@ -46,7 +47,7 @@ It increases coverage; it does not establish a blind final benchmark.
 
 - validate the fixture schema and unique case IDs in unit tests
 - run all selectable strategies against the unchanged source corpus
-- record required and preferred recall@3 per strategy
+- record required recall@3 as the primary metric and preferred recall@3 only as a diagnostic
 - inspect failures as diagnostics only; do not tune parameters in this slice
 
 ## Definition Of Done
@@ -61,7 +62,7 @@ Validated locally on 2026-09-16 after expanding the unchanged source corpus to 2
 questions. The 9-case and 25-case scores are not directly comparable because the denominator and
 coverage changed.
 
-| Strategy | Required acceptable recall@3 | Preferred-source recall@3 |
+| Strategy | Required acceptable recall@3 | Preferred-source diagnostic recall@3 |
 | --- | --- | --- |
 | `lexical` | 15/25 (60%) | 4/20 (20%) |
 | `lexical_authority` | 16/25 (64%) | 5/20 (25%) |
@@ -83,7 +84,8 @@ availability: semantic search placed `art-2-inciso-iii` at rank 23 for `lex-010`
 this evaluation-expansion slice. It becomes evidence to investigate only if it harms cited-answer
 quality or recurs on a frozen holdout set.
 
-The unweighted RRF hybrid is weaker than semantic on both metrics. It remains a reproducible
+The unweighted RRF hybrid is weaker than semantic on the primary required-support metric and the
+optional diagnostic. It remains a reproducible
 comparator, but is not a default or a reason to begin weight calibration. The next quality step
 should be independently authored holdout construction and/or failure analysis, not another ranking
 parameter experiment.

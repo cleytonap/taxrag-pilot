@@ -13,7 +13,7 @@ are preferable for a user-visible citation.
 ## Scope
 
 - replace the singular evaluation anchor with explicit acceptable-anchor sets
-- add an optional preferred-anchor subset for source-quality measurement
+- add an optional preferred-anchor subset for a narrow, policy-driven citation diagnostic
 - report both acceptable-support recall@3 and preferred-source recall@3 from the worker CLI
 - migrate the development fixture to reviewed, source-aware labels
 
@@ -33,23 +33,29 @@ are preferable for a user-visible citation.
 ## Design Choice
 
 `acceptable_anchor_keys` is a non-empty list of passages that directly support the question.
-`preferred_anchor_keys` is an optional subset that represents the best citation when the question
-is answerable by more than one source. The runner records the first rank for each set. A result
-passes required retrieval recall when an acceptable anchor occurs in the top three; preferred
-recall is reported separately and is not yet a release gate.
+`preferred_anchor_keys` is an optional subset used only when a written source policy identifies a
+specific citation priority for the question. The runner records the first rank for each set. A
+result passes required retrieval recall when an acceptable anchor occurs in the top three;
+preferred recall is an observational citation-policy diagnostic, not a general relevance metric,
+ranking objective, or release gate.
 
 ### Preferred-Source Labelling Rule
 
-Declare a preferred anchor whenever one source is uniquely the best citation for the specific
-question. Apply the project source hierarchy and directness together:
+Declare a preferred anchor only when the source policy can make the priority concrete. Apply the
+project source hierarchy and directness together:
 
 1. For a legal filing obligation, dispensation, threshold, or exception, prefer the precise
    controlling IN RFB article or paragraph when it states the rule.
 2. For a procedural explanation or user-facing example that the legal text does not state
    directly, prefer the most direct official Receita guidance or annual Q&A passage.
-3. Omit a preferred subset only when no single passage is better: for example, when multiple
-   equally authoritative passages are independently sufficient, or the answer genuinely requires
-   more than one passage. In that case, the acceptable set remains the correctness measure.
+3. Omit a preferred subset when the priority would depend mainly on editorial taste, when multiple
+   equally authoritative passages are independently sufficient, or when the answer genuinely
+   requires more than one passage. In those cases, the acceptable set remains the correctness
+   measure.
+
+Preferred labels must not be expanded merely to improve coverage of the metric. Before a frozen
+holdout uses them, each label needs a short reviewer rationale identifying the applicable source
+policy; otherwise it remains an unscored development observation.
 
 This rule corrects `lex-004`: Article 2, paragraph 2 is the controlling provision permitting a
 Brazilian resident who is otherwise exempt from filing to submit the declaration. The guidance and

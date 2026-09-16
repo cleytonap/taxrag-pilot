@@ -48,7 +48,7 @@ we compare it with a human-labelled sample.
 | Layer | Metric | Question answered |
 | --- | --- | --- |
 | Retrieval | Required acceptable recall@3 | Is usable evidence present? |
-| Retrieval | Preferred-source recall@3 | Is the best authority present? |
+| Retrieval | Preferred-source recall@3 (diagnostic only) | Is a policy-designated legal basis present for an applicable case? |
 | Retrieval | MRR / nDCG@3 | Is the evidence ranked early and by authority/relevance? |
 | Answer | Claim correctness | Are the required legal facts stated correctly? |
 | Answer | Claim grounding | Is each material claim supported by cited retrieved text? |
@@ -60,6 +60,8 @@ we compare it with a human-labelled sample.
 ## Transition Criteria
 
 - The current 25-case development retrieval fixture remains for diagnosis and iteration.
+- Preferred-source recall is an optional citation-policy diagnostic. It must not be tuned as a
+  general ranking target; future labels require a written source-policy rationale.
 - Before selecting a release/default retrieval configuration, create a separately authored frozen
   holdout set; it must not be used to tune ranking parameters.
 - Do **not** wait for perfect retrieval before building cited answers. The answer contract must
