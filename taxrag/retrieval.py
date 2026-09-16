@@ -12,8 +12,10 @@ from sqlalchemy.orm import Session
 from taxrag.config import settings
 from taxrag.embeddings import EmbeddingProvider, configured_embedding_provider
 
-RetrievalStrategy = Literal["lexical", "lexical_authority", "semantic"]
-SUPPORTED_STRATEGIES = ("lexical", "lexical_authority", "semantic")
+RetrievalStrategy = Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf"]
+SUPPORTED_STRATEGIES = ("lexical", "lexical_authority", "semantic", "hybrid_rrf")
+RRF_CANDIDATE_LIMIT = 20
+RRF_DAMPING_CONSTANT = 60
 
 AUTHORITY_MULTIPLIERS = {
     "primary_legislation": 1.35,
@@ -51,6 +53,8 @@ class RetrievedChunk:
     score: float
     lexical_score: float | None = None
     semantic_score: float | None = None
+    lexical_rank: int | None = None
+    semantic_rank: int | None = None
 
 
 def validate_strategy(strategy: str) -> RetrievalStrategy:
@@ -79,7 +83,65 @@ def search_chunks(
         return _search_semantic_chunks(
             session, question, limit, embedding_provider or configured_embedding_provider()
         )
+    if strategy == "hybrid_rrf":
+        return _search_hybrid_rrf_chunks(
+            session,
+            question,
+            limit,
+            embedding_provider or configured_embedding_provider(),
+        )
     return _search_lexical_chunks(session, question, limit, strategy)
+
+
+def reciprocal_rank_fusion_score(*ranks: int | None) -> float:
+    """Return an unweighted RRF score from one-based ranks in independent candidate lists."""
+    return sum(1 / (RRF_DAMPING_CONSTANT + rank) for rank in ranks if rank is not None)
+
+
+def _search_hybrid_rrf_chunks(
+    session: Session, question: str, limit: int, provider: EmbeddingProvider
+) -> list[RetrievedChunk]:
+    """Fuse bounded lexical and semantic candidate lists without tuning score weights."""
+    candidate_limit = max(limit, RRF_CANDIDATE_LIMIT)
+    lexical_matches = _search_lexical_chunks(session, question, candidate_limit, "lexical")
+    semantic_matches = _search_semantic_chunks(session, question, candidate_limit, provider)
+    lexical_by_chunk = {match.chunk_id: (rank, match) for rank, match in enumerate(lexical_matches, 1)}
+    semantic_by_chunk = {
+        match.chunk_id: (rank, match) for rank, match in enumerate(semantic_matches, 1)
+    }
+    fused_matches = []
+    for chunk_id in lexical_by_chunk.keys() | semantic_by_chunk.keys():
+        lexical_entry = lexical_by_chunk.get(chunk_id)
+        semantic_entry = semantic_by_chunk.get(chunk_id)
+        lexical_rank, lexical_match = lexical_entry if lexical_entry else (None, None)
+        semantic_rank, semantic_match = semantic_entry if semantic_entry else (None, None)
+        source_match = lexical_match or semantic_match
+        assert source_match is not None
+        fused_matches.append(
+            RetrievedChunk(
+                chunk_id=source_match.chunk_id,
+                anchor_key=source_match.anchor_key,
+                anchor_title=source_match.anchor_title,
+                chunk_text=source_match.chunk_text,
+                source_title=source_match.source_title,
+                canonical_url=source_match.canonical_url,
+                authority_level=source_match.authority_level,
+                strategy="hybrid_rrf",
+                score=reciprocal_rank_fusion_score(lexical_rank, semantic_rank),
+                lexical_score=lexical_match.lexical_score if lexical_match else None,
+                semantic_score=semantic_match.semantic_score if semantic_match else None,
+                lexical_rank=lexical_rank,
+                semantic_rank=semantic_rank,
+            )
+        )
+    return sorted(
+        fused_matches,
+        key=lambda match: (
+            -match.score,
+            min(rank for rank in (match.lexical_rank, match.semantic_rank) if rank is not None),
+            match.anchor_key,
+        ),
+    )[:limit]
 
 
 def _search_lexical_chunks(

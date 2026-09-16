@@ -1,7 +1,7 @@
 # Semantic Retrieval Baseline
 
 Date: 2026-09-08
-Status: Implemented; Hybrid Comparison Not Started
+Status: Implemented; First Hybrid Comparison Complete
 
 ## Problem
 

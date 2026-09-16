@@ -77,9 +77,10 @@ The current sequence is intentionally incremental:
    experiment rather than folded into the baseline.
 3. `semantic`: cosine similarity over model-versioned chunk embeddings. It tests paraphrase and
    vocabulary-mismatch retrieval without lexical ranking assistance.
-4. A future hybrid candidate: compare a named fusion rule such as Reciprocal Rank Fusion (RRF),
-   weighted score fusion, or candidate-union plus a reranker. Do not call any mixed method simply
-   "hybrid" without recording its exact rule and parameters.
+4. `hybrid_rrf`: the current hybrid candidate. It fuses the top 20 lexical and semantic candidates
+   using the documented Reciprocal Rank Fusion rule with damping constant 60.
+5. Future hybrid candidates: weighted score fusion or candidate-union plus a reranker. Do not call
+   any mixed method simply "hybrid" without recording its exact rule and parameters.
 
 Do not choose weights or source-preference rules merely to improve a few development examples.
 The development fixture is a diagnostic tool: it shows where a method succeeds or fails. A frozen

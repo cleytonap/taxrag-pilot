@@ -84,6 +84,10 @@ def main() -> None:
                 score_details.append(f"lexical {match.lexical_score:.4f}")
             if match.semantic_score is not None:
                 score_details.append(f"semantic {match.semantic_score:.4f}")
+            if match.lexical_rank is not None:
+                score_details.append(f"lexical rank {match.lexical_rank}")
+            if match.semantic_rank is not None:
+                score_details.append(f"semantic rank {match.semantic_rank}")
             score_details.append(f"authority {match.authority_level}")
             print(f"{rank}. {match.anchor_key} ({'; '.join(score_details)})")
             print(f"   {match.anchor_title} - {match.source_title}")
