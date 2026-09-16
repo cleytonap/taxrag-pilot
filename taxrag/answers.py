@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
@@ -13,6 +13,13 @@ from sqlalchemy.orm import Session
 from taxrag.config import settings
 from taxrag.embeddings import EmbeddingProvider
 from taxrag.retrieval import RetrievalStrategy, RetrievedChunk, search_chunks
+
+AnswerOutcome = Literal[
+    "answered",
+    "provider_abstained",
+    "no_retrieved_evidence",
+    "provider_rejected",
+]
 
 
 class AnswerValidationError(ValueError):
@@ -92,6 +99,7 @@ class CitedAnswer:
     clarification_question: str | None
     retrieval_strategy: RetrievalStrategy
     answer_model: str
+    outcome: AnswerOutcome = "answered"
 
     @property
     def text(self) -> str:
@@ -109,6 +117,7 @@ class CitedAnswer:
             "clarification_question": self.clarification_question,
             "retrieval_strategy": self.retrieval_strategy,
             "answer_model": self.answer_model,
+            "outcome": self.outcome,
         }
 
 
@@ -214,6 +223,7 @@ def answer_question(
             clarification_question="Pode reformular a pergunta com mais detalhes?",
             retrieval_strategy=strategy,
             answer_model=provider.model,
+            outcome="no_retrieved_evidence",
         )
     draft: AnswerDraft | None = None
     try:
@@ -237,6 +247,7 @@ def answer_question(
         clarification_question=draft.clarification_question,
         retrieval_strategy=strategy,
         answer_model=provider.model,
+        outcome="provider_abstained" if draft.abstain else "answered",
     )
 
 
@@ -255,6 +266,7 @@ def _unverified_answer(
         clarification_question="Pode informar mais detalhes sobre a sua situação?",
         retrieval_strategy=strategy,
         answer_model=answer_model,
+        outcome="provider_rejected",
     )
 
 

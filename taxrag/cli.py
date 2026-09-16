@@ -198,7 +198,7 @@ def main() -> None:
             print(
                 f"{result.case_id}: structural {status}; cited {cited}; "
                 f"missing required {missing}; abstain {result.answer.abstain} "
-                f"(expected {result.expected_abstain})"
+                f"(expected {result.expected_abstain}); outcome {result.answer.outcome}"
             )
             for criterion in result.human_review_criteria:
                 print(f"   human review: {criterion}")

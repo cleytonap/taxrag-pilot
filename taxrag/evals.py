@@ -78,8 +78,10 @@ class AnswerEvalResult:
 
     @property
     def abstention_matches(self) -> bool:
-        """Return whether the safe-abstention outcome matches the fixture expectation."""
-        return self.answer.abstain is self.expected_abstain
+        """Require an explicit provider abstention rather than treating a rejection as a pass."""
+        if self.expected_abstain:
+            return self.answer.outcome == "provider_abstained"
+        return self.answer.outcome == "answered"
 
     @property
     def required_anchors_present(self) -> bool:

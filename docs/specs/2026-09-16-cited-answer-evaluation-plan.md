@@ -123,10 +123,11 @@ controlled excerpts keyed by retrieved chunk ID; see
 ## First Real Fixture Run
 
 On 2026-09-16, the five-case development fixture ran with `gpt-4.1-mini` and semantic retrieval.
-The structural result was **3/5**: `answer-001`, `answer-003`, and `answer-005` selected their
-required anchors and had the expected non-abstention outcome; `answer-002` missed required anchor
-`art-2-inciso-iii`; and `answer-004` answered when the fixture expected abstention for the
-unsupported exercise 2025 rule.
+The original console reported **3/5**. That result was corrected to **2/5** after outcome
+provenance was added: `answer-001` and `answer-005` selected their required anchors and had the
+expected non-abstention outcome; `answer-002` and `answer-003` missed their required anchors; and
+`answer-004` was a rejected provider output disguised as a safe fallback, not a valid provider
+abstention.
 
 Human review must not treat the three structural passes as product passes:
 
@@ -134,8 +135,8 @@ Human review must not treat the three structural passes as product passes:
 | --- | --- | --- |
 | `answer-001` | Needs improvement | Reaches the correct threshold comparison but repeats equivalent sources and omits explicit `2025` / exercise `2026` scope in its main rule statement. |
 | `answer-002` | Needs improvement | Explains the capital-gain condition but retrieval did not select the normative anchor required by the fixture; it also adds an unnecessary list of other conditions. |
-| `answer-003` | Provisional pass | Directly explains voluntary filing and its dependent limitation without claiming a guaranteed refund. |
-| `answer-004` | Fail | Safely signals that the source scope is exercise 2026, but should abstain instead of creating unsupported claims about exercise 2025. |
+| `answer-003` | Needs improvement | Directly explains voluntary filing, but misses the fixture's normative anchor even though the prose is broadly useful. |
+| `answer-004` | Fail | The provider output was rejected; the generic safe fallback must not count as an explained abstention. |
 | `answer-005` | Needs improvement | Calculates R$ 36.000,00 and identifies the threshold, but omits explicit year/exercise scope, repeats conditions, and overstates unspecified possible dispensations. |
 
 The next change may now target prompt and answer presentation, because it is supported by five
@@ -146,6 +147,9 @@ selection, and abstention when the requested exercise is unsupported.
 The planned implementation is specified in
 `2026-09-16-criterion-limited-answer-prompt.md`. The fixture must remain unchanged for the next
 real run so it can measure this prompt iteration against the documented baseline.
+
+The prompt-comparison run must be re-executed after outcome provenance is implemented. See
+`2026-09-16-answer-outcome-provenance.md`.
 
 ## Test And Eval Plan
 

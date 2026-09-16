@@ -101,6 +101,7 @@ def test_answer_question_abstains_without_calling_provider_when_retrieval_is_emp
 
     assert result.abstain is True
     assert result.claims == ()
+    assert result.outcome == "no_retrieved_evidence"
     assert "fonte oficial" in result.limitation or "fonte oficial" in result.limitation.lower()
 
 
@@ -120,7 +121,27 @@ def test_answer_question_returns_safe_abstention_when_provider_citation_is_inval
 
     assert result.abstain is True
     assert result.claims == ()
+    assert result.outcome == "provider_rejected"
     assert "Não foi possível validar" in result.limitation
+
+
+def test_answer_question_distinguishes_a_valid_provider_abstention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider's deliberate abstention differs from a rejected provider response."""
+    monkeypatch.setattr(answers, "search_chunks", lambda *_args, **_kwargs: [_chunk()])
+
+    class AbstainingProvider:
+        model = "test"
+
+        def draft_answer(self, *_args: object) -> AnswerDraft:
+            return AnswerDraft((), True, "A evidência não cobre o exercício solicitado.", "Qual exercício?")
+
+    result = answer_question(None, "Pergunta", AbstainingProvider())  # type: ignore[arg-type]
+
+    assert result.abstain is True
+    assert result.outcome == "provider_abstained"
+    assert result.limitation == "A evidência não cobre o exercício solicitado."
 
 
 def test_answer_question_reports_rejected_draft_only_to_an_opt_in_diagnostic_hook(

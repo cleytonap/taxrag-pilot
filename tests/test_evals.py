@@ -138,6 +138,26 @@ def test_answer_evaluation_reports_structural_checks_without_judging_prose() -> 
     assert result.human_review_criteria == case.human_review_criteria
 
 
+def test_answer_evaluation_does_not_count_a_rejected_provider_output_as_abstention() -> None:
+    """Safe fallback is not evidence that the provider followed an abstention instruction."""
+    case = next(case for case in load_answer_eval_cases(ANSWER_FIXTURE_PATH) if case.expected_abstain)
+    answer = CitedAnswer(
+        question=case.question,
+        claims=(),
+        abstain=True,
+        limitation="Não foi possível validar uma resposta com as fontes oficiais recuperadas.",
+        clarification_question=None,
+        retrieval_strategy="semantic",
+        answer_model="test",
+        outcome="provider_rejected",
+    )
+
+    result = evaluate_answer(case, answer)
+
+    assert result.abstention_matches is False
+    assert result.passed_structural_checks is False
+
+
 def test_answer_evaluation_forwards_provider_and_retrieval_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
