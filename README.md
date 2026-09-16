@@ -32,3 +32,13 @@ Search the processed chunks and run the lexical retrieval baseline with:
 uv run python -m apps.worker search "Qual é o limite de rendimentos tributáveis?"
 uv run python -m apps.worker eval-retrieval
 ```
+
+The experimental cited-answer command retrieves official chunks and validates that each model
+citation refers to a retrieved chunk and contains a verbatim excerpt:
+
+```bash
+uv run python -m apps.worker answer "Vendi um bem com lucro em 2025. Isso pode me obrigar a declarar?"
+```
+
+This is a development diagnostic, not tax advice. It verifies citation identity and quoted-source
+membership, but its generated prose is still undergoing human-reviewed answer evaluation.

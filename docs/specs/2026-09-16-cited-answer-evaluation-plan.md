@@ -2,7 +2,7 @@
 
 Date: 2026-09-16
 
-Status: Proposed
+Status: In Progress
 
 ## Problem
 
@@ -74,6 +74,21 @@ we compare it with a human-labelled sample.
 - A single concise legal chunk may be sufficient for a retrieval pass but inadequate for a clear
   answer. Answer evaluation must therefore assess required claims separately.
 - The small current corpus and evaluation set cannot justify broad quality claims.
+
+## First Live-Path Finding
+
+The first live answer on 2026-09-16 passed deterministic citation validation: its chunk IDs were
+retrieved and both quoted excerpts occurred verbatim in their cited chunks. Manual review still
+found an answer-quality defect: it stated the capital-gain rule categorically while omitting the
+source's `pessoa física residente no Brasil` condition. This confirms that citation integrity is
+necessary but does not prove semantic completeness or safe wording. The provider instruction now
+requires conditional, general wording and preservation of material scope conditions. The finding
+must become a hand-reviewed answer-evaluation case before this slice is marked implemented.
+
+A second run of the same question changed the categorical wording to `pode obrigar`, but still
+omitted the residency condition and introduced a broad claim about `outras condições` that was not
+fully supported by its attached excerpts. Prompt hardening is therefore only a mitigation. It does
+not replace a human-authored answer fixture or manual review of early results.
 
 ## Test And Eval Plan
 

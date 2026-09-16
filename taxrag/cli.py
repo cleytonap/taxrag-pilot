@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
+from taxrag.answers import (
+    DeterministicAnswerProvider,
+    answer_question,
+    configured_answer_provider,
+)
 from taxrag.config import settings
 from taxrag.database import SessionLocal
 from taxrag.embeddings import configured_embedding_provider, embed_latest_source_version
@@ -43,10 +49,17 @@ def main() -> None:
         "--fixture", type=Path, default=Path("docs/evals/lexical-retrieval-baseline.jsonl")
     )
     eval_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="lexical")
+    answer_parser = subparsers.add_parser(
+        "answer", help="Retrieve official evidence and return a citation-validated answer"
+    )
+    answer_parser.add_argument("question")
+    answer_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="semantic")
+    answer_parser.add_argument("--provider", choices=("openai", "fake"), default="openai")
     args = parser.parse_args()
 
     requires_embeddings = args.command == "embed-source" or (
-        args.command in {"search", "eval-retrieval"} and args.strategy == "semantic"
+        args.command in {"search", "eval-retrieval", "answer"}
+        and args.strategy in {"semantic", "hybrid_rrf"}
     )
     if requires_embeddings and not settings.openai_api_key:
         parser.error(
@@ -132,6 +145,21 @@ def main() -> None:
                 f"{preferred_passed}/{len(preferred_results)} "
                 f"({preferred_passed / len(preferred_results):.0%})"
             )
+    elif args.command == "answer":
+        provider = DeterministicAnswerProvider() if args.provider == "fake" else configured_answer_provider()
+        with SessionLocal() as session:
+            answer = answer_question(
+                session,
+                args.question,
+                provider,
+                strategy=args.strategy,
+                embedding_provider=(
+                    configured_embedding_provider()
+                    if args.strategy in {"semantic", "hybrid_rrf"}
+                    else None
+                ),
+            )
+        print(json.dumps(answer.to_dict(), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

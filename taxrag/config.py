@@ -28,13 +28,14 @@ def _object_storage_root() -> Path:
 
 @dataclass(frozen=True)
 class Settings:
-    """Runtime settings for storage, database access, and optional embedding generation."""
+    """Runtime settings for storage, database access, embeddings, and answer generation."""
 
     database_url: str
     object_storage_root: Path
     openai_api_key: str | None
     embedding_model: str
     embedding_dimensions: int
+    answer_model: str
 
 
 settings = Settings(
@@ -47,4 +48,5 @@ settings = Settings(
     # This initial pgvector column is deliberately fixed at the model's native size.
     # A different size requires an explicit schema/model migration, not an env toggle.
     embedding_dimensions=EMBEDDING_DIMENSIONS,
+    answer_model=os.getenv("TAXRAG_ANSWER_MODEL", "gpt-4.1-mini"),
 )
