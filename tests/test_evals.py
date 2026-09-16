@@ -4,7 +4,14 @@ from types import SimpleNamespace
 import pytest
 
 from taxrag import evals
-from taxrag.answers import AnswerClaim, Citation, CitedAnswer
+from taxrag.answers import (
+    AnswerClaim,
+    AnswerDraft,
+    Citation,
+    CitedAnswer,
+    DraftCitation,
+    DraftClaim,
+)
 from taxrag.cli import _format_answer_eval_result
 from taxrag.evals import (
     evaluate_answer,
@@ -193,6 +200,50 @@ def test_answer_evaluation_does_not_count_a_rejected_provider_output_as_abstenti
     assert result.passed_structural_checks is False
 
 
+def test_answer_evaluation_trace_explains_missing_retrieval_and_rejected_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed development case identifies both retrieval and validation root causes."""
+    case = load_answer_eval_cases(ANSWER_FIXTURE_PATH)[0]
+    chunk = SimpleNamespace(
+        chunk_id="available-chunk",
+        anchor_key="unrelated-anchor",
+        anchor_title="Unrelated evidence",
+        source_title="Official source",
+    )
+    monkeypatch.setattr("taxrag.answers.search_chunks", lambda *_args, **_kwargs: [chunk])
+
+    class InvalidCitationProvider:
+        model = "test"
+
+        def draft_answer(self, *_args: object) -> AnswerDraft:
+            return AnswerDraft(
+                claims=(
+                    DraftClaim(
+                        "Unsupported claim.",
+                        (DraftCitation("invented-chunk"),),
+                    ),
+                ),
+                abstain=False,
+                limitation=None,
+                clarification_question=None,
+            )
+
+    result = run_answer_evals(
+        None,  # type: ignore[arg-type]
+        [case],
+        InvalidCitationProvider(),  # type: ignore[arg-type]
+    )[0]
+    report = "\n".join(_format_answer_eval_result(result, show_answer=False))
+
+    assert result.trace.retrieved_evidence[0].anchor_key == "unrelated-anchor"
+    assert result.trace.validation_error == "Claim 1, citation 1 cited a chunk that was not retrieved"
+    assert result.trace.rejected_draft is not None
+    assert "required anchors absent from retrieval: art-2-inciso-i" in report
+    assert "validator rejection: Claim 1, citation 1 cited a chunk that was not retrieved" in report
+    assert '"chunk_id": "invented-chunk"' in report
+
+
 def test_answer_evaluation_forwards_provider_and_retrieval_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -216,10 +267,12 @@ def test_answer_evaluation_forwards_provider_and_retrieval_configuration(
         embedding_provider=embedding_provider,  # type: ignore[arg-type]
     )
 
-    assert observed == {
+    assert {
         "question": case.question,
         "provider": provider,
         "strategy": "semantic",
         "embedding_provider": embedding_provider,
-    }
+    }.items() <= observed.items()
+    assert callable(observed["on_retrieved_chunks"])
+    assert callable(observed["on_validation_failure"])
     assert results[0].passed_structural_checks is False

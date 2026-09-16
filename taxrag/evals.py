@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from taxrag.answers import AnswerProvider, CitedAnswer, answer_question
+from taxrag.answers import (
+    AnswerDraft,
+    AnswerProvider,
+    AnswerValidationError,
+    CitedAnswer,
+    answer_question,
+)
 from taxrag.embeddings import EmbeddingProvider
-from taxrag.retrieval import RetrievalStrategy, search_chunks
+from taxrag.retrieval import RetrievalStrategy, RetrievedChunk, search_chunks
 
 
 @dataclass(frozen=True)
@@ -75,6 +82,7 @@ class AnswerEvalResult:
     missing_required_anchor_keys: tuple[str, ...]
     expected_abstain: bool
     human_review_criteria: tuple[str, ...]
+    trace: AnswerEvalTrace
 
     @property
     def abstention_matches(self) -> bool:
@@ -92,6 +100,25 @@ class AnswerEvalResult:
     def passed_structural_checks(self) -> bool:
         """Return the narrow automated result, excluding human judgment of prose quality."""
         return self.abstention_matches and self.required_anchors_present
+
+
+@dataclass(frozen=True)
+class RetrievedEvidence:
+    """Minimal retrieved-chunk provenance retained for evaluation RCA output."""
+
+    chunk_id: str
+    anchor_key: str
+    anchor_title: str
+    source_title: str
+
+
+@dataclass(frozen=True)
+class AnswerEvalTrace:
+    """Development-only facts explaining an answer evaluation outcome."""
+
+    retrieved_evidence: tuple[RetrievedEvidence, ...]
+    validation_error: str | None = None
+    rejected_draft: AnswerDraft | None = None
 
 
 def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
@@ -234,23 +261,56 @@ def run_answer_evals(
     strategy: RetrievalStrategy = "semantic",
     embedding_provider: EmbeddingProvider | None = None,
 ) -> list[AnswerEvalResult]:
-    """Run answer cases, keeping semantic quality assessment explicitly human-reviewed."""
-    return [
-        evaluate_answer(
-            case,
-            answer_question(
-                session,
-                case.question,
-                provider,
-                strategy=strategy,
-                embedding_provider=embedding_provider,
-            ),
+    """Run answer cases and retain local trace data needed to diagnose failures."""
+    results = []
+    for case in cases:
+        retrieved_evidence: tuple[RetrievedEvidence, ...] = ()
+        validation_error: str | None = None
+        rejected_draft: AnswerDraft | None = None
+
+        def record_retrieval(chunks: Sequence[RetrievedChunk]) -> None:
+            nonlocal retrieved_evidence
+            retrieved_evidence = tuple(
+                RetrievedEvidence(
+                    chunk_id=chunk.chunk_id,
+                    anchor_key=chunk.anchor_key,
+                    anchor_title=chunk.anchor_title,
+                    source_title=chunk.source_title,
+                )
+                for chunk in chunks
+            )
+
+        def record_rejection(
+            draft: AnswerDraft | None,
+            error: AnswerValidationError,
+            _chunks: Sequence[RetrievedChunk],
+        ) -> None:
+            nonlocal rejected_draft, validation_error
+            rejected_draft = draft
+            validation_error = str(error)
+
+        answer = answer_question(
+            session,
+            case.question,
+            provider,
+            strategy=strategy,
+            embedding_provider=embedding_provider,
+            on_retrieved_chunks=record_retrieval,
+            on_validation_failure=record_rejection,
         )
-        for case in cases
-    ]
+        results.append(
+            evaluate_answer(
+                case,
+                answer,
+                trace=AnswerEvalTrace(retrieved_evidence, validation_error, rejected_draft),
+            )
+        )
+    return results
 
 
-def evaluate_answer(case: AnswerEvalCase, answer: CitedAnswer) -> AnswerEvalResult:
+def evaluate_answer(
+    case: AnswerEvalCase, answer: CitedAnswer, *, trace: AnswerEvalTrace | None = None
+) -> AnswerEvalResult:
     """Evaluate citation anchors and abstention without claiming to judge legal prose automatically."""
     cited_anchor_keys = tuple(
         dict.fromkeys(
@@ -266,6 +326,7 @@ def evaluate_answer(case: AnswerEvalCase, answer: CitedAnswer) -> AnswerEvalResu
         missing_required_anchor_keys=missing,
         expected_abstain=case.expected_abstain,
         human_review_criteria=case.human_review_criteria,
+        trace=trace or AnswerEvalTrace(()),
     )
 
 

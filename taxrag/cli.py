@@ -58,6 +58,8 @@ def _format_answer_eval_result(result: AnswerEvalResult, *, show_answer: bool) -
         "  human-review checklist (not automatically scored):",
     ]
     lines.extend(f"    - {criterion}" for criterion in result.human_review_criteria)
+    if not result.passed_structural_checks:
+        lines.extend(_format_answer_eval_trace(result))
     if show_answer:
         lines.append(f"  generated answer: {answer.text or '[abstained]'}")
         if answer.limitation:
@@ -65,6 +67,49 @@ def _format_answer_eval_result(result: AnswerEvalResult, *, show_answer: bool) -
         if answer.clarification_question:
             lines.append(f"  clarification: {answer.clarification_question}")
     return lines
+
+
+def _format_answer_eval_trace(result: AnswerEvalResult) -> list[str]:
+    """Render local RCA facts for a failed evaluation without presenting drafts as answers."""
+    trace = result.trace
+    retrieved_anchors = {evidence.anchor_key for evidence in trace.retrieved_evidence}
+    missing_from_retrieval = [
+        anchor for anchor in result.missing_required_anchor_keys if anchor not in retrieved_anchors
+    ]
+    available_but_not_cited = [
+        anchor for anchor in result.missing_required_anchor_keys if anchor in retrieved_anchors
+    ]
+    lines = ["  failure diagnostics:"]
+    if trace.retrieved_evidence:
+        lines.append("    retrieved evidence:")
+        lines.extend(
+            "      - "
+            f"{evidence.anchor_key} ({evidence.chunk_id}; {evidence.source_title})"
+            for evidence in trace.retrieved_evidence
+        )
+    else:
+        lines.append("    retrieved evidence: none")
+    if missing_from_retrieval:
+        lines.append(
+            "    required anchors absent from retrieval: "
+            f"{', '.join(missing_from_retrieval)}"
+        )
+    if available_but_not_cited:
+        lines.append(
+            "    required anchors retrieved but not cited by the provider: "
+            f"{', '.join(available_but_not_cited)}"
+        )
+    if trace.validation_error:
+        lines.append(f"    validator rejection: {trace.validation_error}")
+        lines.append("    untrusted provider draft (not shown to an end user):")
+        lines.extend(_indent_json(_draft_to_dict(trace.rejected_draft), spaces=6))
+    return lines
+
+
+def _indent_json(value: object, *, spaces: int) -> list[str]:
+    """Format local diagnostic data as indented JSON lines for terminal inspection."""
+    prefix = " " * spaces
+    return [f"{prefix}{line}" for line in json.dumps(value, ensure_ascii=False, indent=2).splitlines()]
 
 
 def main() -> None:

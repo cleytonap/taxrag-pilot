@@ -198,12 +198,12 @@ def answer_question(
         [AnswerDraft | None, AnswerValidationError, Sequence[RetrievedChunk]], None
     ]
     | None = None,
+    on_retrieved_chunks: Callable[[Sequence[RetrievedChunk]], None] | None = None,
 ) -> CitedAnswer:
     """Retrieve official evidence, draft an answer, and return only validated citations.
 
-    ``on_validation_failure`` is an opt-in local diagnostic hook. It receives untrusted
-    provider output only after validation has rejected it; callers must not render it as
-    an answer.
+    The opt-in diagnostic hooks let development tooling inspect retrieval candidates and
+    rejected provider output. Callers must never render that untrusted output as an answer.
     """
     if not question.strip():
         raise ValueError("Question must not be blank")
@@ -214,6 +214,12 @@ def answer_question(
         strategy=strategy,
         embedding_provider=embedding_provider,
     )
+    if on_retrieved_chunks is not None:
+        try:
+            on_retrieved_chunks(chunks)
+        except (OSError, TypeError, ValueError):
+            # Diagnostics must never weaken the answer path.
+            pass
     if not chunks:
         return CitedAnswer(
             question=question,

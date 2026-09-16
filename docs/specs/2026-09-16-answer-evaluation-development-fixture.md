@@ -16,6 +16,8 @@ restated the same rule three times and did not answer the user's practical quest
 - automate only structural checks: expected abstention and required cited anchors
 - attach concise human-review criteria for legal correctness, scope, clarity, and repetition
 - provide an explicit CLI command to run the fixture against the deterministic or OpenAI provider
+- retain local failure diagnostics: retrieved evidence, exact validator rejection reason, and any
+  rejected provider draft
 
 ## Assumptions
 
@@ -31,6 +33,12 @@ human-review rubric. The evaluator reports a narrow structural pass/fail result 
 the question, expected values, actual values, and rubric in separate sections. The rubric is a
 checklist for a person, not expected model output and not an automated score. It intentionally does
 not convert subjective answer quality into a misleading automatic score.
+
+For a structural failure, the CLI also prints an RCA section. It identifies the three retrieved
+chunks and separates a required anchor that was absent from retrieval from one that was retrieved
+but not selected by the provider. When validation rejected provider output, it prints the exact
+structural reason and the untrusted draft. This development-only trace must never be rendered as a
+user answer or persisted with sensitive production questions.
 
 ## Risks
 
