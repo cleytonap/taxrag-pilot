@@ -98,6 +98,11 @@ boundary must return a verified-abstention result rather than expose an internal
 work may reduce these rejections by letting the model select stable application-provided excerpt
 identifiers instead of copying quote text.
 
+For local root-cause analysis, the `answer --debug` command writes a rejected untrusted draft,
+the validation reason, and the retrieved chunks to `stderr`. It is opt-in and must not be used in
+shared logs or with sensitive questions. The default path continues to expose only the safe
+abstention result.
+
 ## Test And Eval Plan
 
 - Unit-test structured-output parsing and rejection of a citation ID that was not retrieved.

@@ -126,6 +126,37 @@ def test_answer_question_returns_safe_abstention_when_provider_citation_is_inval
     assert "Não foi possível validar" in result.limitation
 
 
+def test_answer_question_reports_rejected_draft_only_to_an_opt_in_diagnostic_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Local diagnostics can inspect rejected output without letting it reach callers."""
+    monkeypatch.setattr(answers, "search_chunks", lambda *_args, **_kwargs: [_chunk()])
+    rejected: list[tuple[AnswerDraft | None, AnswerValidationError, list[RetrievedChunk]]] = []
+
+    class InvalidCitationProvider:
+        model = "test"
+
+        def draft_answer(self, *_args: object) -> AnswerDraft:
+            return _draft(quote="Este trecho não existe na fonte oficial recuperada.")
+
+    result = answer_question(
+        None,
+        "Pergunta",
+        InvalidCitationProvider(),  # type: ignore[arg-type]
+        on_validation_failure=lambda draft, error, chunks: rejected.append(
+            (draft, error, list(chunks))
+        ),
+    )
+
+    assert result.abstain is True
+    assert rejected[0][0] is not None
+    assert rejected[0][0].claims[0].citations[0].quote == (
+        "Este trecho não existe na fonte oficial recuperada."
+    )
+    assert "does not appear" in str(rejected[0][1])
+    assert rejected[0][2][0].chunk_id == "chunk-1"
+
+
 def test_openai_provider_uses_strict_structured_output_without_storing_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

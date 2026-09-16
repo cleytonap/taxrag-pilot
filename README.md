@@ -42,3 +42,12 @@ uv run python -m apps.worker answer "Vendi um bem com lucro em 2025. Isso pode m
 
 This is a development diagnostic, not tax advice. It verifies citation identity and quoted-source
 membership, but its generated prose is still undergoing human-reviewed answer evaluation.
+
+If an answer is safely rejected, add `--debug` to inspect the untrusted model draft, rejection
+reason, and retrieved chunks on `stderr`. Do this only locally and only for non-sensitive
+questions, because the trace includes unverified model output:
+
+```bash
+uv run python -m apps.worker answer --debug "Recebi apenas 30 mil no ano passado. Devo declarar?" \
+  2> var/last-answer-debug.json
+```

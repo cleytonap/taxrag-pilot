@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -191,8 +191,17 @@ def answer_question(
     *,
     strategy: RetrievalStrategy = "semantic",
     embedding_provider: EmbeddingProvider | None = None,
+    on_validation_failure: Callable[
+        [AnswerDraft | None, AnswerValidationError, Sequence[RetrievedChunk]], None
+    ]
+    | None = None,
 ) -> CitedAnswer:
-    """Retrieve official evidence, draft an answer, and return only validated citations."""
+    """Retrieve official evidence, draft an answer, and return only validated citations.
+
+    ``on_validation_failure`` is an opt-in local diagnostic hook. It receives untrusted
+    provider output only after validation has rejected it; callers must not render it as
+    an answer.
+    """
     if not question.strip():
         raise ValueError("Question must not be blank")
     chunks = search_chunks(
@@ -212,12 +221,19 @@ def answer_question(
             retrieval_strategy=strategy,
             answer_model=provider.model,
         )
+    draft: AnswerDraft | None = None
     try:
         draft = provider.draft_answer(question, chunks)
         claims = validate_answer_draft(draft, chunks)
-    except AnswerValidationError:
+    except AnswerValidationError as error:
         # A malformed or misquoted provider response is untrusted output, not a CLI/API crash.
         # Do not expose its text: return the same safe outcome as insufficient evidence instead.
+        if on_validation_failure is not None:
+            try:
+                on_validation_failure(draft, error, chunks)
+            except (OSError, TypeError, ValueError):
+                # Diagnostics must never weaken the safe-abstention boundary.
+                pass
         return _unverified_answer(question, strategy, provider.model)
     return CitedAnswer(
         question=question,

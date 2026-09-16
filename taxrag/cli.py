@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from taxrag.answers import (
+    AnswerDraft,
+    AnswerValidationError,
     DeterministicAnswerProvider,
     answer_question,
     configured_answer_provider,
@@ -17,7 +21,7 @@ from taxrag.embeddings import configured_embedding_provider, embed_latest_source
 from taxrag.evals import load_retrieval_eval_cases, run_retrieval_evals
 from taxrag.ingestion import ingest_source
 from taxrag.processing import process_latest_source_version
-from taxrag.retrieval import SUPPORTED_STRATEGIES, search_chunks
+from taxrag.retrieval import SUPPORTED_STRATEGIES, RetrievedChunk, search_chunks
 from taxrag.sources import APPROVED_SOURCES
 
 
@@ -55,6 +59,14 @@ def main() -> None:
     answer_parser.add_argument("question")
     answer_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="semantic")
     answer_parser.add_argument("--provider", choices=("openai", "fake"), default="openai")
+    answer_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "write an untrusted rejected draft and its retrieved chunks to stderr; "
+            "use only for local debugging of non-sensitive questions"
+        ),
+    )
     args = parser.parse_args()
 
     requires_embeddings = args.command == "embed-source" or (
@@ -147,6 +159,7 @@ def main() -> None:
             )
     elif args.command == "answer":
         provider = DeterministicAnswerProvider() if args.provider == "fake" else configured_answer_provider()
+        debug_handler = _print_answer_validation_debug if args.debug else None
         with SessionLocal() as session:
             answer = answer_question(
                 session,
@@ -158,8 +171,54 @@ def main() -> None:
                     if args.strategy in {"semantic", "hybrid_rrf"}
                     else None
                 ),
+                on_validation_failure=debug_handler,
             )
         print(json.dumps(answer.to_dict(), ensure_ascii=False, indent=2))
+
+
+def _print_answer_validation_debug(
+    draft: AnswerDraft | None,
+    error: AnswerValidationError,
+    chunks: Sequence[RetrievedChunk],
+) -> None:
+    """Write rejected, untrusted provider output to stderr for local diagnosis only."""
+    payload = {
+        "event": "answer_validation_rejected",
+        "reason": str(error),
+        "draft": _draft_to_dict(draft),
+        "retrieved_chunks": [
+            {
+                "chunk_id": chunk.chunk_id,
+                "anchor_key": chunk.anchor_key,
+                "anchor_title": chunk.anchor_title,
+                "source_title": chunk.source_title,
+                "chunk_text": chunk.chunk_text,
+            }
+            for chunk in chunks
+        ],
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2), file=sys.stderr)
+
+
+def _draft_to_dict(draft: AnswerDraft | None) -> dict[str, object] | None:
+    """Serialize untrusted structured output without converting it into a validated answer."""
+    if draft is None:
+        return None
+    return {
+        "claims": [
+            {
+                "text": claim.text,
+                "citations": [
+                    {"chunk_id": citation.chunk_id, "quote": citation.quote}
+                    for citation in claim.citations
+                ],
+            }
+            for claim in draft.claims
+        ],
+        "abstain": draft.abstain,
+        "limitation": draft.limitation,
+        "clarification_question": draft.clarification_question,
+    }
 
 
 if __name__ == "__main__":
