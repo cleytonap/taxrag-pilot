@@ -212,8 +212,13 @@ def answer_question(
             retrieval_strategy=strategy,
             answer_model=provider.model,
         )
-    draft = provider.draft_answer(question, chunks)
-    claims = validate_answer_draft(draft, chunks)
+    try:
+        draft = provider.draft_answer(question, chunks)
+        claims = validate_answer_draft(draft, chunks)
+    except AnswerValidationError:
+        # A malformed or misquoted provider response is untrusted output, not a CLI/API crash.
+        # Do not expose its text: return the same safe outcome as insufficient evidence instead.
+        return _unverified_answer(question, strategy, provider.model)
     return CitedAnswer(
         question=question,
         claims=claims,
@@ -222,6 +227,24 @@ def answer_question(
         clarification_question=draft.clarification_question,
         retrieval_strategy=strategy,
         answer_model=provider.model,
+    )
+
+
+def _unverified_answer(
+    question: str, strategy: RetrievalStrategy, answer_model: str
+) -> CitedAnswer:
+    """Return a safe response when provider output cannot be verified against retrieved evidence."""
+    return CitedAnswer(
+        question=question,
+        claims=(),
+        abstain=True,
+        limitation=(
+            "Não foi possível validar uma resposta com as fontes oficiais recuperadas. "
+            "Tente novamente ou reformule a pergunta."
+        ),
+        clarification_question="Pode informar mais detalhes sobre a sua situação?",
+        retrieval_strategy=strategy,
+        answer_model=answer_model,
     )
 
 

@@ -92,6 +92,12 @@ omitted the residency condition and introduced a broad claim about `outras condi
 fully supported by its attached excerpts. Prompt hardening is therefore only a mitigation. It does
 not replace a human-authored answer fixture or manual review of early results.
 
+Provider output can also fail deterministic quote validation when it transcribes an excerpt
+imperfectly. This is a safe rejection, not a reason to weaken exact quote validation. The answer
+boundary must return a verified-abstention result rather than expose an internal traceback; future
+work may reduce these rejections by letting the model select stable application-provided excerpt
+identifiers instead of copying quote text.
+
 ## Test And Eval Plan
 
 - Unit-test structured-output parsing and rejection of a citation ID that was not retrieved.

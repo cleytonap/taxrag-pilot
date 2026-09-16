@@ -107,6 +107,25 @@ def test_answer_question_abstains_without_calling_provider_when_retrieval_is_emp
     assert "fonte oficial" in result.limitation or "fonte oficial" in result.limitation.lower()
 
 
+def test_answer_question_returns_safe_abstention_when_provider_citation_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A misquoted provider answer is rejected without exposing a traceback to the caller."""
+    monkeypatch.setattr(answers, "search_chunks", lambda *_args, **_kwargs: [_chunk()])
+
+    class InvalidCitationProvider:
+        model = "test"
+
+        def draft_answer(self, *_args: object) -> AnswerDraft:
+            return _draft(quote="Este trecho não existe na fonte oficial recuperada.")
+
+    result = answer_question(None, "Pergunta", InvalidCitationProvider())  # type: ignore[arg-type]
+
+    assert result.abstain is True
+    assert result.claims == ()
+    assert "Não foi possível validar" in result.limitation
+
+
 def test_openai_provider_uses_strict_structured_output_without_storing_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
