@@ -28,8 +28,9 @@ restated the same rule three times and did not answer the user's practical quest
 
 Each fixture case records a question, required citation anchors, expected abstention, and a
 human-review rubric. The evaluator reports a narrow structural pass/fail result and always prints
-the rubric. It intentionally does not convert subjective answer quality into a misleading automatic
-score.
+the question, expected values, actual values, and rubric in separate sections. The rubric is a
+checklist for a person, not expected model output and not an automated score. It intentionally does
+not convert subjective answer quality into a misleading automatic score.
 
 ## Risks
 

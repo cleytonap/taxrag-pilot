@@ -5,6 +5,7 @@ import pytest
 
 from taxrag import evals
 from taxrag.answers import AnswerClaim, Citation, CitedAnswer
+from taxrag.cli import _format_answer_eval_result
 from taxrag.evals import (
     evaluate_answer,
     load_answer_eval_cases,
@@ -136,6 +137,40 @@ def test_answer_evaluation_reports_structural_checks_without_judging_prose() -> 
 
     assert result.passed_structural_checks is True
     assert result.human_review_criteria == case.human_review_criteria
+
+
+def test_answer_eval_report_shows_question_expected_and_actual_values() -> None:
+    """The CLI report must not make review rubrics look like generated output."""
+    case = load_answer_eval_cases(ANSWER_FIXTURE_PATH)[0]
+    citation = Citation(
+        chunk_id="chunk-1",
+        anchor_key="art-2-inciso-i",
+        anchor_title="Art. 2, inciso I",
+        source_title="IN RFB nº 2.312/2026",
+        canonical_url="https://example.test",
+        authority_level="tax_authority_norm",
+        excerpt="recebeu rendimentos tributáveis cuja soma foi superior ao limite.",
+    )
+    result = evaluate_answer(
+        case,
+        CitedAnswer(
+            question=case.question,
+            claims=(AnswerClaim("Resposta de teste.", (citation,)),),
+            abstain=False,
+            limitation=None,
+            clarification_question=None,
+            retrieval_strategy="semantic",
+            answer_model="test",
+        ),
+    )
+
+    report = "\n".join(_format_answer_eval_result(result, show_answer=True))
+
+    assert f"question: {case.question}" in report
+    assert "expected:\n    required citation anchors: art-2-inciso-i" in report
+    assert "actual:\n    cited anchors: art-2-inciso-i" in report
+    assert "human-review checklist (not automatically scored):" in report
+    assert "generated answer: Resposta de teste." in report
 
 
 def test_answer_evaluation_does_not_count_a_rejected_provider_output_as_abstention() -> None:

@@ -19,6 +19,7 @@ from taxrag.config import settings
 from taxrag.database import SessionLocal
 from taxrag.embeddings import configured_embedding_provider, embed_latest_source_version
 from taxrag.evals import (
+    AnswerEvalResult,
     load_answer_eval_cases,
     load_retrieval_eval_cases,
     run_answer_evals,
@@ -28,6 +29,42 @@ from taxrag.ingestion import ingest_source
 from taxrag.processing import process_latest_source_version
 from taxrag.retrieval import SUPPORTED_STRATEGIES, RetrievedChunk, search_chunks
 from taxrag.sources import APPROVED_SOURCES
+
+
+def _format_answer_eval_result(result: AnswerEvalResult, *, show_answer: bool) -> list[str]:
+    """Render one answer-evaluation result as a self-contained review record.
+
+    The structural checker and human review answer different questions, so the
+    report keeps their expected and actual values visibly separate.
+    """
+    answer = result.answer
+    required = ", ".join(result.required_anchor_keys) or "none"
+    cited = ", ".join(result.cited_anchor_keys) or "none"
+    missing = ", ".join(result.missing_required_anchor_keys) or "none"
+    structural_status = "pass" if result.passed_structural_checks else "fail"
+
+    lines = [
+        result.case_id,
+        f"  question: {answer.question}",
+        "  expected:",
+        f"    required citation anchors: {required}",
+        f"    provider abstention: {result.expected_abstain}",
+        "  actual:",
+        f"    cited anchors: {cited}",
+        f"    missing required anchors: {missing}",
+        f"    abstain: {answer.abstain}",
+        f"    outcome: {answer.outcome}",
+        f"  automated structural result: {structural_status}",
+        "  human-review checklist (not automatically scored):",
+    ]
+    lines.extend(f"    - {criterion}" for criterion in result.human_review_criteria)
+    if show_answer:
+        lines.append(f"  generated answer: {answer.text or '[abstained]'}")
+        if answer.limitation:
+            lines.append(f"  limitation: {answer.limitation}")
+        if answer.clarification_question:
+            lines.append(f"  clarification: {answer.clarification_question}")
+    return lines
 
 
 def main() -> None:
@@ -192,22 +229,7 @@ def main() -> None:
             )
         passed = sum(result.passed_structural_checks for result in results)
         for result in results:
-            status = "pass" if result.passed_structural_checks else "fail"
-            cited = ", ".join(result.cited_anchor_keys) or "none"
-            missing = ", ".join(result.missing_required_anchor_keys) or "none"
-            print(
-                f"{result.case_id}: structural {status}; cited {cited}; "
-                f"missing required {missing}; abstain {result.answer.abstain} "
-                f"(expected {result.expected_abstain}); outcome {result.answer.outcome}"
-            )
-            for criterion in result.human_review_criteria:
-                print(f"   human review: {criterion}")
-            if args.show_answers:
-                print(f"   answer: {result.answer.text or '[abstained]'}")
-                if result.answer.limitation:
-                    print(f"   limitation: {result.answer.limitation}")
-                if result.answer.clarification_question:
-                    print(f"   clarification: {result.answer.clarification_question}")
+            print("\n".join(_format_answer_eval_result(result, show_answer=args.show_answers)))
         print(
             f"Answer structural checks ({args.strategy}, {args.provider}): "
             f"{passed}/{len(results)} passed. Human review remains required for every case."
