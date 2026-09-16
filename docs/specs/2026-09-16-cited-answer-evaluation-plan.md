@@ -151,6 +151,21 @@ real run so it can measure this prompt iteration against the documented baseline
 The prompt-comparison run must be re-executed after outcome provenance is implemented. See
 `2026-09-16-answer-outcome-provenance.md`.
 
+## Prompt Iteration Result
+
+The required re-run completed on 2026-09-16 and is saved locally as
+`var/eval-runs/2026-09-16_prompt-iteration-2.txt`. The corrected structural result remained
+**2/5**. `answer-001` and `answer-005` passed structural checks, but human review found that the
+model still did not reliably apply the numeric facts supplied in the questions: `answer-001`
+ignored R$ 30.000,00, and `answer-005` ignored the R$ 3.000,00-per-month calculation in this run.
+`answer-002` and `answer-003` still missed their fixture-required normative anchors, and
+`answer-004` remained `provider_rejected` rather than a valid explained abstention.
+
+This iteration is therefore inconclusive for promotion as a quality improvement. Do not add a
+second round of prompt tuning based on this five-case development fixture alone. The next planned
+work is durable JSON evaluation artifacts with per-case outcomes and validation diagnostics, as
+specified in `2026-09-16-evaluation-run-persistence.md`.
+
 ## Test And Eval Plan
 
 - Unit-test structured-output parsing and rejection of a citation ID that was not retrieved.

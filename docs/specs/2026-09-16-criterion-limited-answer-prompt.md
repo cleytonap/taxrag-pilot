@@ -2,7 +2,7 @@
 
 Date: 2026-09-16
 
-Status: Proposed
+Status: Evaluated, not promoted
 
 ## Problem
 
@@ -52,3 +52,11 @@ filing hypotheses unless they are necessary to avoid a misleading conclusion. It
 - the new policy is explicit and documented in code and this spec
 - the fixture remains unchanged and the second real run is reviewed case by case
 - no citation identity or ingestion behavior is weakened
+
+## Evaluation Result
+
+The same five-case fixture was re-run after the prompt change. Its corrected structural score was
+2/5, and human review found that the model still failed to use the supplied numeric facts reliably
+in the R$ 30.000,00 and R$ 3.000,00-per-month cases. The prompt remains in the code as the current
+explicit policy, but this experiment is not evidence that it should be considered a proven quality
+improvement. Further wording changes require durable run artifacts and a broader reviewed set.
