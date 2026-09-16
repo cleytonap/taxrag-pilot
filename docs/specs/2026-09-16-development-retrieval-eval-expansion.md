@@ -63,15 +63,25 @@ coverage changed.
 
 | Strategy | Required acceptable recall@3 | Preferred-source recall@3 |
 | --- | --- | --- |
-| `lexical` | 13/25 (52%) | 4/19 (21%) |
-| `lexical_authority` | 14/25 (56%) | 5/19 (26%) |
-| `semantic` | 23/25 (92%) | 14/19 (74%) |
-| `hybrid_rrf` | 19/25 (76%) | 7/19 (37%) |
+| `lexical` | 15/25 (60%) | 4/19 (21%) |
+| `lexical_authority` | 16/25 (64%) | 5/19 (26%) |
+| `semantic` | 25/25 (100%) | 14/19 (74%) |
+| `hybrid_rrf` | 21/25 (84%) | 7/19 (37%) |
 
-Semantic retrieval remains the leading development strategy. The two required-support gaps are
-`lex-010` (gain of capital on asset disposal) and `lex-015` (becoming a Brazilian resident during
-the year). They are recorded as future diagnostic targets, not reasons to alter ranking parameters
-in this evaluation-expansion slice.
+### RCA: apparent semantic failures
+
+The initial semantic result reported required-support misses for `lex-010` (gain of capital on
+asset disposal) and `lex-015` (becoming a Brazilian resident during the year). Inspection showed
+that this was an evaluation-label defect, not a retrieval defect: the fixture allowed only the
+matching concise IN RFB article even though both the official Receita guidance and Question 001 of
+the official annual Q&A state each rule directly. The fixture now lists those chunks as acceptable
+support while retaining the IN RFB article as the preferred legal source.
+
+The meaningful remaining diagnostic is therefore **preferred-source ranking**, not evidence
+availability: semantic search placed `art-2-inciso-iii` at rank 23 for `lex-010` and
+`art-2-inciso-vii` at rank 6 for `lex-015`. This is not a reason to alter ranking parameters in
+this evaluation-expansion slice. It becomes evidence to investigate only if it harms cited-answer
+quality or recurs on a frozen holdout set.
 
 The unweighted RRF hybrid is weaker than semantic on both metrics. It remains a reproducible
 comparator, but is not a default or a reason to begin weight calibration. The next quality step
