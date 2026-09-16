@@ -199,6 +199,16 @@ def test_openai_provider_uses_strict_structured_output_without_storing_response(
     assert input_payload["evidence"][0]["chunk_id"] == "chunk-1"
 
 
+def test_answer_instruction_requires_criterion_limited_scope_and_concise_abstention() -> None:
+    """The prompt policy is versioned in tests because it is a measured product behavior."""
+    instruction = answers._instructions()
+
+    assert "estritamente limitada a ele" in instruction
+    assert "ano-calendário e exercício" in instruction
+    assert "abstain=true" in instruction
+    assert "Não repita a mesma regra" in instruction
+
+
 def test_openai_provider_requires_key_before_a_network_call() -> None:
     """Answer generation is explicitly disabled until local credentials are configured."""
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):

@@ -49,7 +49,7 @@ score.
 
 ## Definition Of Done
 
-- the fixture contains the R$ 30.000,00 clarity/repetition finding and an abstention case
+- the fixture contains the R$ 30.000,00 and R$ 3.000,00-per-month findings plus an abstention case
 - structural results distinguish automated checks from human review
 - no prompt change is made solely to improve an unmeasured live example
 
@@ -64,3 +64,10 @@ The live `R$ 3.000,00 por mês` failure became `answer-005`. It exposed a model-
 ellipsis in a supposedly literal quote. The fixture records the expected annual calculation,
 material conditions, non-repetition requirement, and application-controlled evidence display.
 The answer contract now carries selected chunk IDs only; no fuzzy matching was added.
+
+## First Real Review
+
+The first OpenAI semantic run produced 3/5 structural passes. Human review accepted only
+`answer-003` provisionally. The other cases exposed repetition, omitted period scope, a missing
+normative anchor, or failure to abstain for an unsupported exercise. These are the baseline findings
+for the next prompt-and-presentation iteration; they are not reasons to weaken citation identity.

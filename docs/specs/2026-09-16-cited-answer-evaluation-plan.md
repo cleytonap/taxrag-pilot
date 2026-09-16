@@ -120,6 +120,33 @@ recorded as `answer-005` in the answer-development fixture. The contract now use
 controlled excerpts keyed by retrieved chunk ID; see
 `2026-09-16-application-controlled-citations.md`.
 
+## First Real Fixture Run
+
+On 2026-09-16, the five-case development fixture ran with `gpt-4.1-mini` and semantic retrieval.
+The structural result was **3/5**: `answer-001`, `answer-003`, and `answer-005` selected their
+required anchors and had the expected non-abstention outcome; `answer-002` missed required anchor
+`art-2-inciso-iii`; and `answer-004` answered when the fixture expected abstention for the
+unsupported exercise 2025 rule.
+
+Human review must not treat the three structural passes as product passes:
+
+| Case | Human review | Finding |
+| --- | --- | --- |
+| `answer-001` | Needs improvement | Reaches the correct threshold comparison but repeats equivalent sources and omits explicit `2025` / exercise `2026` scope in its main rule statement. |
+| `answer-002` | Needs improvement | Explains the capital-gain condition but retrieval did not select the normative anchor required by the fixture; it also adds an unnecessary list of other conditions. |
+| `answer-003` | Provisional pass | Directly explains voluntary filing and its dependent limitation without claiming a guaranteed refund. |
+| `answer-004` | Fail | Safely signals that the source scope is exercise 2026, but should abstain instead of creating unsupported claims about exercise 2025. |
+| `answer-005` | Needs improvement | Calculates R$ 36.000,00 and identifies the threshold, but omits explicit year/exercise scope, repeats conditions, and overstates unspecified possible dispensations. |
+
+The next change may now target prompt and answer presentation, because it is supported by five
+reviewed cases rather than one anecdote. It must preserve application-controlled citations and add
+tests for: direct criterion-limited conclusions, explicit year/exercise scope, concise source
+selection, and abstention when the requested exercise is unsupported.
+
+The planned implementation is specified in
+`2026-09-16-criterion-limited-answer-prompt.md`. The fixture must remain unchanged for the next
+real run so it can measure this prompt iteration against the documented baseline.
+
 ## Test And Eval Plan
 
 - Unit-test structured-output parsing and rejection of a citation ID that was not retrieved.
