@@ -43,6 +43,15 @@ uv run python -m apps.worker answer "Vendi um bem com lucro em 2025. Isso pode m
 This is a development diagnostic, not tax advice. It verifies citation identity and quoted-source
 membership, but its generated prose is still undergoing human-reviewed answer evaluation.
 
+Run the initial cited-answer fixture with explicit provider selection. Its automated result checks
+only abstention and required citation anchors; inspect the printed human-review criteria before
+changing answer behavior:
+
+```bash
+uv run python -m apps.worker eval-answers --provider fake --strategy lexical
+uv run python -m apps.worker eval-answers --provider openai --strategy semantic
+```
+
 If an answer is safely rejected, add `--debug` to inspect the untrusted model draft, rejection
 reason, and retrieved chunks on `stderr`. Do this only locally and only for non-sensitive
 questions, because the trace includes unverified model output:

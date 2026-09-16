@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from taxrag.answers import AnswerProvider, CitedAnswer, answer_question
 from taxrag.embeddings import EmbeddingProvider
 from taxrag.retrieval import RetrievalStrategy, search_chunks
 
@@ -52,6 +53,45 @@ class RetrievalEvalResult:
         return self.passed_at_three is self.expected_recall_at_three
 
 
+@dataclass(frozen=True)
+class AnswerEvalCase:
+    """A human-reviewed answer expectation with only deterministic checks automated."""
+
+    case_id: str
+    question: str
+    required_anchor_keys: tuple[str, ...]
+    expected_abstain: bool
+    human_review_criteria: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AnswerEvalResult:
+    """Structural answer outcome plus the human rubric that still needs review."""
+
+    case_id: str
+    answer: CitedAnswer
+    required_anchor_keys: tuple[str, ...]
+    cited_anchor_keys: tuple[str, ...]
+    missing_required_anchor_keys: tuple[str, ...]
+    expected_abstain: bool
+    human_review_criteria: tuple[str, ...]
+
+    @property
+    def abstention_matches(self) -> bool:
+        """Return whether the safe-abstention outcome matches the fixture expectation."""
+        return self.answer.abstain is self.expected_abstain
+
+    @property
+    def required_anchors_present(self) -> bool:
+        """Return whether every fixture-required source anchor occurs in a validated citation."""
+        return not self.missing_required_anchor_keys
+
+    @property
+    def passed_structural_checks(self) -> bool:
+        """Return the narrow automated result, excluding human judgment of prose quality."""
+        return self.abstention_matches and self.required_anchors_present
+
+
 def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
     """Load a versioned JSONL fixture and validate its minimal retrieval contract."""
     cases = []
@@ -88,6 +128,48 @@ def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
     return cases
 
 
+def load_answer_eval_cases(path: Path) -> list[AnswerEvalCase]:
+    """Load a human-authored JSONL answer fixture with a deliberately narrow contract."""
+    cases = []
+    for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        required = {
+            "id",
+            "question",
+            "required_anchor_keys",
+            "expected_abstain",
+            "human_review_criteria",
+        }
+        if set(record) != required:
+            raise ValueError(
+                f"Answer evaluation fixture line {line_number} does not match the required contract"
+            )
+        case_id, question = record["id"], record["question"]
+        if not isinstance(case_id, str) or not case_id or not isinstance(question, str) or not question:
+            raise TypeError(f"Answer evaluation fixture line {line_number} has an invalid id or question")
+        expected_abstain = record["expected_abstain"]
+        if not isinstance(expected_abstain, bool):
+            raise TypeError(f"Answer evaluation fixture line {line_number} has invalid expected_abstain")
+        required_anchors = _load_anchor_keys(
+            record["required_anchor_keys"], line_number, "required", allow_empty=expected_abstain
+        )
+        if expected_abstain and required_anchors:
+            raise ValueError(
+                f"Answer evaluation fixture line {line_number} cannot require citations for abstention"
+            )
+        criteria = _load_review_criteria(record["human_review_criteria"], line_number)
+        cases.append(
+            AnswerEvalCase(case_id, question, required_anchors, expected_abstain, criteria)
+        )
+    if not cases:
+        raise ValueError("Answer evaluation fixture contains no cases")
+    if len({case.case_id for case in cases}) != len(cases):
+        raise ValueError("Answer evaluation fixture contains duplicate case ids")
+    return cases
+
+
 def _load_anchor_keys(
     value: object, line_number: int, label: str, *, allow_empty: bool = False
 ) -> tuple[str, ...]:
@@ -104,6 +186,15 @@ def _load_anchor_keys(
         raise ValueError(
             f"Evaluation fixture line {line_number} has duplicate {label}_anchor_keys"
         )
+    return tuple(value)
+
+
+def _load_review_criteria(value: object, line_number: int) -> tuple[str, ...]:
+    """Validate a non-empty, duplicate-free human review rubric."""
+    if not isinstance(value, list) or not value or not all(isinstance(item, str) and item for item in value):
+        raise TypeError(f"Answer evaluation fixture line {line_number} has invalid human_review_criteria")
+    if len(set(value)) != len(value):
+        raise ValueError(f"Answer evaluation fixture line {line_number} has duplicate human_review_criteria")
     return tuple(value)
 
 
@@ -132,6 +223,48 @@ def run_retrieval_evals(
             )
         )
     return results
+
+
+def run_answer_evals(
+    session: Session,
+    cases: list[AnswerEvalCase],
+    provider: AnswerProvider,
+    strategy: RetrievalStrategy = "semantic",
+    embedding_provider: EmbeddingProvider | None = None,
+) -> list[AnswerEvalResult]:
+    """Run answer cases, keeping semantic quality assessment explicitly human-reviewed."""
+    return [
+        evaluate_answer(
+            case,
+            answer_question(
+                session,
+                case.question,
+                provider,
+                strategy=strategy,
+                embedding_provider=embedding_provider,
+            ),
+        )
+        for case in cases
+    ]
+
+
+def evaluate_answer(case: AnswerEvalCase, answer: CitedAnswer) -> AnswerEvalResult:
+    """Evaluate citation anchors and abstention without claiming to judge legal prose automatically."""
+    cited_anchor_keys = tuple(
+        dict.fromkeys(
+            citation.anchor_key for claim in answer.claims for citation in claim.citations
+        )
+    )
+    missing = tuple(anchor for anchor in case.required_anchor_keys if anchor not in cited_anchor_keys)
+    return AnswerEvalResult(
+        case_id=case.case_id,
+        answer=answer,
+        required_anchor_keys=case.required_anchor_keys,
+        cited_anchor_keys=cited_anchor_keys,
+        missing_required_anchor_keys=missing,
+        expected_abstain=case.expected_abstain,
+        human_review_criteria=case.human_review_criteria,
+    )
 
 
 def _first_anchor_rank(matches: list[object], expected_anchors: tuple[str, ...]) -> int | None:

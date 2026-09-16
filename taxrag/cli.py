@@ -18,7 +18,12 @@ from taxrag.answers import (
 from taxrag.config import settings
 from taxrag.database import SessionLocal
 from taxrag.embeddings import configured_embedding_provider, embed_latest_source_version
-from taxrag.evals import load_retrieval_eval_cases, run_retrieval_evals
+from taxrag.evals import (
+    load_answer_eval_cases,
+    load_retrieval_eval_cases,
+    run_answer_evals,
+    run_retrieval_evals,
+)
 from taxrag.ingestion import ingest_source
 from taxrag.processing import process_latest_source_version
 from taxrag.retrieval import SUPPORTED_STRATEGIES, RetrievedChunk, search_chunks
@@ -53,6 +58,14 @@ def main() -> None:
         "--fixture", type=Path, default=Path("docs/evals/lexical-retrieval-baseline.jsonl")
     )
     eval_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="lexical")
+    answer_eval_parser = subparsers.add_parser(
+        "eval-answers", help="Run structural checks for the human-reviewed cited-answer fixture"
+    )
+    answer_eval_parser.add_argument(
+        "--fixture", type=Path, default=Path("docs/evals/cited-answer-development.jsonl")
+    )
+    answer_eval_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="lexical")
+    answer_eval_parser.add_argument("--provider", choices=("openai", "fake"), default="fake")
     answer_parser = subparsers.add_parser(
         "answer", help="Retrieve official evidence and return a citation-validated answer"
     )
@@ -70,7 +83,7 @@ def main() -> None:
     args = parser.parse_args()
 
     requires_embeddings = args.command == "embed-source" or (
-        args.command in {"search", "eval-retrieval", "answer"}
+        args.command in {"search", "eval-retrieval", "eval-answers", "answer"}
         and args.strategy in {"semantic", "hybrid_rrf"}
     )
     if requires_embeddings and not settings.openai_api_key:
@@ -157,6 +170,37 @@ def main() -> None:
                 f"{preferred_passed}/{len(preferred_results)} "
                 f"({preferred_passed / len(preferred_results):.0%})"
             )
+    elif args.command == "eval-answers":
+        cases = load_answer_eval_cases(args.fixture)
+        provider = DeterministicAnswerProvider() if args.provider == "fake" else configured_answer_provider()
+        with SessionLocal() as session:
+            results = run_answer_evals(
+                session,
+                cases,
+                provider,
+                strategy=args.strategy,
+                embedding_provider=(
+                    configured_embedding_provider()
+                    if args.strategy in {"semantic", "hybrid_rrf"}
+                    else None
+                ),
+            )
+        passed = sum(result.passed_structural_checks for result in results)
+        for result in results:
+            status = "pass" if result.passed_structural_checks else "fail"
+            cited = ", ".join(result.cited_anchor_keys) or "none"
+            missing = ", ".join(result.missing_required_anchor_keys) or "none"
+            print(
+                f"{result.case_id}: structural {status}; cited {cited}; "
+                f"missing required {missing}; abstain {result.answer.abstain} "
+                f"(expected {result.expected_abstain})"
+            )
+            for criterion in result.human_review_criteria:
+                print(f"   human review: {criterion}")
+        print(
+            f"Answer structural checks ({args.strategy}, {args.provider}): "
+            f"{passed}/{len(results)} passed. Human review remains required for every case."
+        )
     elif args.command == "answer":
         provider = DeterministicAnswerProvider() if args.provider == "fake" else configured_answer_provider()
         debug_handler = _print_answer_validation_debug if args.debug else None

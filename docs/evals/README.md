@@ -60,6 +60,22 @@ Target 40-60 cases after the source inventory is complete. Cover:
 - abstention quality: unsupported or individualized requests are safely narrowed or declined
 - year/period accuracy: answer does not apply a rule to an unsupported exercise or calendar year
 
+## Cited Answer Development Fixture
+
+`cited-answer-development.jsonl` is a small human-authored development fixture for the answer
+path. Each case contains required citation anchors, expected abstention, and a human-review rubric.
+The command below reports only structural checks; it does **not** claim to automatically judge
+legal correctness, clarity, or repetition:
+
+```bash
+uv run python -m apps.worker eval-answers --provider fake --strategy lexical
+uv run python -m apps.worker eval-answers --provider openai --strategy semantic
+```
+
+The fake run only checks the offline wiring; its deliberately extractive provider is not expected
+to satisfy the full fixture. The OpenAI run is intentional and billable. Review each generated
+answer against the printed criteria before changing the prompt, retrieval, or guardrails.
+
 ## Retrieval Comparison Protocol
 
 Compare retrieval approaches on the same development fixture before combining them. Record both

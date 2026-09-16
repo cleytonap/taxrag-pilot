@@ -43,6 +43,11 @@ The initial answer evaluation will use human-authored expected claims and citati
 keeps the legal standard inspectable. An LLM-as-judge may later help scale reviews, but only after
 we compare it with a human-labelled sample.
 
+The first compact development fixture is implemented in
+`docs/evals/cited-answer-development.jsonl`. Its automated result is intentionally limited to
+expected abstention and required citation anchors; the fixture also carries a mandatory human
+review rubric for claim correctness, scope, clarity, and repetition.
+
 ## Metrics
 
 | Layer | Metric | Question answered |
