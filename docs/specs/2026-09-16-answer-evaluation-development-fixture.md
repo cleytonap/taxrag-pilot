@@ -44,7 +44,7 @@ score.
 - run `uv run python -m apps.worker eval-answers --provider fake --strategy lexical` as an
   offline path check
 - run `uv run python -m apps.worker eval-answers --provider openai --strategy semantic`
-  intentionally, then review
+  intentionally with `--show-answers`, then review
   every printed rubric against the generated answers
 
 ## Definition Of Done

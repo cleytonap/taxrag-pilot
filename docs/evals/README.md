@@ -69,7 +69,7 @@ legal correctness, clarity, or repetition:
 
 ```bash
 uv run python -m apps.worker eval-answers --provider fake --strategy lexical
-uv run python -m apps.worker eval-answers --provider openai --strategy semantic
+uv run python -m apps.worker eval-answers --provider openai --strategy semantic --show-answers
 ```
 
 The fake run only checks the offline wiring; its deliberately extractive provider is not expected

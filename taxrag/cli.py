@@ -66,6 +66,11 @@ def main() -> None:
     )
     answer_eval_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="lexical")
     answer_eval_parser.add_argument("--provider", choices=("openai", "fake"), default="fake")
+    answer_eval_parser.add_argument(
+        "--show-answers",
+        action="store_true",
+        help="print each generated answer for the mandatory human review step",
+    )
     answer_parser = subparsers.add_parser(
         "answer", help="Retrieve official evidence and return a citation-validated answer"
     )
@@ -197,6 +202,12 @@ def main() -> None:
             )
             for criterion in result.human_review_criteria:
                 print(f"   human review: {criterion}")
+            if args.show_answers:
+                print(f"   answer: {result.answer.text or '[abstained]'}")
+                if result.answer.limitation:
+                    print(f"   limitation: {result.answer.limitation}")
+                if result.answer.clarification_question:
+                    print(f"   clarification: {result.answer.clarification_question}")
         print(
             f"Answer structural checks ({args.strategy}, {args.provider}): "
             f"{passed}/{len(results)} passed. Human review remains required for every case."
