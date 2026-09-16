@@ -63,10 +63,10 @@ coverage changed.
 
 | Strategy | Required acceptable recall@3 | Preferred-source recall@3 |
 | --- | --- | --- |
-| `lexical` | 15/25 (60%) | 4/19 (21%) |
-| `lexical_authority` | 16/25 (64%) | 5/19 (26%) |
-| `semantic` | 25/25 (100%) | 14/19 (74%) |
-| `hybrid_rrf` | 21/25 (84%) | 7/19 (37%) |
+| `lexical` | 15/25 (60%) | 4/20 (20%) |
+| `lexical_authority` | 16/25 (64%) | 5/20 (25%) |
+| `semantic` | 25/25 (100%) | 15/20 (75%) |
+| `hybrid_rrf` | 21/25 (84%) | 7/20 (35%) |
 
 ### RCA: apparent semantic failures
 
