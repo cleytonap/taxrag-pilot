@@ -96,7 +96,8 @@ not replace a human-authored answer fixture or manual review of early results.
 - Integration-test a cited answer with a deterministic fake provider before making a paid model
   call.
 - Run the answer fixture against the real provider only after the deterministic path is green;
-  save the model, prompt version, retrieval anchors, latency, and token use with each run.
+  save the model, prompt version, retrieval anchors, latency, and token use with each run. The
+  storage design is defined in `2026-09-16-evaluation-run-persistence.md`.
 - Manually review all initial answer failures and a representative passing sample.
 
 ## Definition Of Done
