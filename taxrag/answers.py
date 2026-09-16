@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
-import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -16,8 +14,6 @@ from taxrag.config import settings
 from taxrag.embeddings import EmbeddingProvider
 from taxrag.retrieval import RetrievalStrategy, RetrievedChunk, search_chunks
 
-MINIMUM_QUOTE_LENGTH = 20
-
 
 class AnswerValidationError(ValueError):
     """Raised when a provider draft cannot be tied to the retrieved evidence."""
@@ -25,10 +21,9 @@ class AnswerValidationError(ValueError):
 
 @dataclass(frozen=True)
 class DraftCitation:
-    """A provider-proposed citation expressed in internal retrieved-chunk identifiers."""
+    """A provider-selected reference to one chunk retrieved for this question."""
 
     chunk_id: str
-    quote: str
 
 
 @dataclass(frozen=True)
@@ -51,7 +46,7 @@ class AnswerDraft:
 
 @dataclass(frozen=True)
 class Citation:
-    """A validated citation ready for a caller to render with source provenance."""
+    """An application-controlled source excerpt ready for a caller to render."""
 
     chunk_id: str
     anchor_key: str
@@ -59,7 +54,7 @@ class Citation:
     source_title: str
     canonical_url: str
     authority_level: str
-    quote: str
+    excerpt: str
 
     def to_dict(self) -> dict[str, str]:
         """Serialize the citation without exposing mutable internal objects."""
@@ -70,7 +65,7 @@ class Citation:
             "source_title": self.source_title,
             "canonical_url": self.canonical_url,
             "authority_level": self.authority_level,
-            "quote": self.quote,
+            "excerpt": self.excerpt,
         }
 
 
@@ -156,21 +151,20 @@ class OpenAIAnswerProvider(AnswerProvider):
 
 
 class DeterministicAnswerProvider(AnswerProvider):
-    """Offline provider that cites the first retrieved chunk for CLI smoke tests."""
+    """Offline provider that selects the first retrieved chunk for CLI smoke tests."""
 
     model = "deterministic-test-provider"
 
     def draft_answer(self, question: str, chunks: Sequence[RetrievedChunk]) -> AnswerDraft:
-        """Return one exact, inspectable extract rather than attempting a synthetic answer."""
+        """Return one source-linked extract rather than attempting a synthetic answer."""
         if not chunks:
             return AnswerDraft((), True, "Não encontrei fonte oficial suficiente.", None)
         chunk = chunks[0]
-        quote = _first_quote(chunk.chunk_text)
         return AnswerDraft(
             claims=(
                 DraftClaim(
-                    text=f"Trecho recuperado da fonte oficial: {quote}",
-                    citations=(DraftCitation(chunk.chunk_id, quote),),
+                    text=f"Trecho recuperado da fonte oficial: {chunk.chunk_text}",
+                    citations=(DraftCitation(chunk.chunk_id),),
                 ),
             ),
             abstain=False,
@@ -226,7 +220,7 @@ def answer_question(
         draft = provider.draft_answer(question, chunks)
         claims = validate_answer_draft(draft, chunks)
     except AnswerValidationError as error:
-        # A malformed or misquoted provider response is untrusted output, not a CLI/API crash.
+        # A malformed or unsupported provider response is untrusted output, not a CLI/API crash.
         # Do not expose its text: return the same safe outcome as insufficient evidence instead.
         if on_validation_failure is not None:
             try:
@@ -267,7 +261,11 @@ def _unverified_answer(
 def validate_answer_draft(
     draft: AnswerDraft, chunks: Sequence[RetrievedChunk]
 ) -> tuple[AnswerClaim, ...]:
-    """Accept only claims with exact quotes from chunks retrieved for this question."""
+    """Accept only claims that select chunks retrieved for this question.
+
+    The application, not the provider, attaches each displayed source excerpt. This keeps
+    citations literal and stable without asking the provider to transcribe legal text.
+    """
     if draft.abstain:
         if draft.claims:
             raise AnswerValidationError("An abstaining answer must not include factual claims")
@@ -289,12 +287,6 @@ def validate_answer_draft(
                 raise AnswerValidationError(
                     f"Claim {claim_index}, citation {citation_index} cited a chunk that was not retrieved"
                 )
-            try:
-                _validate_quote(draft_citation.quote, chunk.chunk_text)
-            except AnswerValidationError as error:
-                raise AnswerValidationError(
-                    f"Claim {claim_index}, citation {citation_index} for chunk {chunk.chunk_id}: {error}"
-                ) from error
             citations.append(
                 Citation(
                     chunk_id=chunk.chunk_id,
@@ -303,37 +295,11 @@ def validate_answer_draft(
                     source_title=chunk.source_title,
                     canonical_url=chunk.canonical_url,
                     authority_level=chunk.authority_level,
-                    quote=draft_citation.quote,
+                    excerpt=chunk.chunk_text,
                 )
             )
         validated_claims.append(AnswerClaim(claim.text, tuple(citations)))
     return tuple(validated_claims)
-
-
-def _validate_quote(quote: str, source_text: str) -> None:
-    """Require a substantial exact quote after whitespace-safe Unicode normalization."""
-    normalized_quote = _normalize_quote(quote)
-    if len(normalized_quote) < MINIMUM_QUOTE_LENGTH:
-        raise AnswerValidationError(
-            f"Citation quote must contain at least {MINIMUM_QUOTE_LENGTH} characters"
-        )
-    if normalized_quote not in _normalize_quote(source_text):
-        raise AnswerValidationError("Citation quote does not appear in the cited retrieved chunk")
-
-
-def _normalize_quote(value: str) -> str:
-    """Normalize formatting differences while preserving the words being cited."""
-    return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", value)).strip().casefold()
-
-
-def _first_quote(source_text: str) -> str:
-    """Select a sufficiently long exact prefix for the deterministic offline provider."""
-    normalized = re.sub(r"\s+", " ", source_text).strip()
-    if len(normalized) < MINIMUM_QUOTE_LENGTH:
-        raise AnswerValidationError("Retrieved chunk is too short to produce a citation quote")
-    sentence_end = re.search(r"[.!?](?:\s|$)", normalized[MINIMUM_QUOTE_LENGTH - 1 :])
-    end = MINIMUM_QUOTE_LENGTH + sentence_end.end() - 1 if sentence_end else min(len(normalized), 280)
-    return normalized[:end]
 
 
 def _parse_draft(payload: object) -> AnswerDraft:
@@ -365,12 +331,12 @@ def _parse_claim(payload: object) -> DraftClaim:
         raise AnswerValidationError("Each answer claim has invalid text or citations")
     citations = []
     for citation in raw_citations:
-        if not isinstance(citation, dict) or set(citation) != {"chunk_id", "quote"}:
-            raise AnswerValidationError("Each citation must contain only chunk_id and quote")
-        chunk_id, quote = citation["chunk_id"], citation["quote"]
-        if not isinstance(chunk_id, str) or not chunk_id or not isinstance(quote, str) or not quote:
-            raise AnswerValidationError("Each citation has an invalid chunk_id or quote")
-        citations.append(DraftCitation(chunk_id, quote))
+        if not isinstance(citation, dict) or set(citation) != {"chunk_id"}:
+            raise AnswerValidationError("Each citation must contain only chunk_id")
+        chunk_id = citation["chunk_id"]
+        if not isinstance(chunk_id, str) or not chunk_id:
+            raise AnswerValidationError("Each citation has an invalid chunk_id")
+        citations.append(DraftCitation(chunk_id))
     return DraftClaim(text, tuple(citations))
 
 
@@ -391,9 +357,9 @@ def _instructions() -> str:
         "obrigado ou dispensado. Explique a regra de forma condicional e geral. "
         "Preserve todas as condições materiais da evidência, incluindo sujeito, período, "
         "limites, exceções e requisitos de residência quando existirem. "
-        "Cada afirmação factual deve ter uma ou mais citações com o chunk_id fornecido e "
-        "uma citação literal exata de pelo menos 20 caracteres da evidência. "
-        "Nunca invente chunk_id, citação ou regra. Se a evidência não bastar, use abstain=true "
+        "Cada afirmação factual deve ter uma ou mais citações com um chunk_id fornecido. "
+        "Nunca invente chunk_id ou regra. A aplicação adicionará o trecho literal da fonte. "
+        "Se a evidência não bastar, use abstain=true "
         "e não inclua claims."
     )
 
@@ -437,10 +403,9 @@ def _response_format() -> dict[str, Any]:
                                 "items": {
                                     "type": "object",
                                     "additionalProperties": False,
-                                    "required": ["chunk_id", "quote"],
+                                    "required": ["chunk_id"],
                                     "properties": {
                                         "chunk_id": {"type": "string"},
-                                        "quote": {"type": "string"},
                                     },
                                 },
                             },

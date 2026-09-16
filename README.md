@@ -40,8 +40,9 @@ citation refers to a retrieved chunk and contains a verbatim excerpt:
 uv run python -m apps.worker answer "Vendi um bem com lucro em 2025. Isso pode me obrigar a declarar?"
 ```
 
-This is a development diagnostic, not tax advice. It verifies citation identity and quoted-source
-membership, but its generated prose is still undergoing human-reviewed answer evaluation.
+This is a development diagnostic, not tax advice. It verifies that every selected citation belongs
+to the retrieved evidence; the application attaches the displayed source excerpt. Its generated
+prose is still undergoing human-reviewed answer evaluation.
 
 Run the initial cited-answer fixture with explicit provider selection. Its automated result checks
 only abstention and required citation anchors; inspect the printed human-review criteria before

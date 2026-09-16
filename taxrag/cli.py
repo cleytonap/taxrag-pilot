@@ -253,7 +253,7 @@ def _draft_to_dict(draft: AnswerDraft | None) -> dict[str, object] | None:
             {
                 "text": claim.text,
                 "citations": [
-                    {"chunk_id": citation.chunk_id, "quote": citation.quote}
+                    {"chunk_id": citation.chunk_id}
                     for citation in claim.citations
                 ],
             }

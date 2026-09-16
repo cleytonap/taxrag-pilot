@@ -39,14 +39,13 @@ def _chunk(chunk_id: str = "chunk-1") -> RetrievedChunk:
     )
 
 
-def _draft(*, chunk_id: str = "chunk-1", quote: str | None = None) -> AnswerDraft:
+def _draft(*, chunk_id: str = "chunk-1") -> AnswerDraft:
     """Return a minimally valid non-abstaining draft for a known retrieved chunk."""
-    quote = quote or "ganho de capital na alienação de bens ou direitos sujeito à incidência do imposto."
     return AnswerDraft(
         claims=(
             DraftClaim(
                 "A obtenção de ganho de capital pode exigir a declaração.",
-                (DraftCitation(chunk_id, quote),),
+                (DraftCitation(chunk_id),),
             ),
         ),
         abstain=False,
@@ -55,33 +54,22 @@ def _draft(*, chunk_id: str = "chunk-1", quote: str | None = None) -> AnswerDraf
     )
 
 
-def test_validated_answer_citation_preserves_retrieved_provenance() -> None:
-    """A valid exact quote becomes a renderable citation with source metadata."""
+def test_validated_answer_citation_preserves_retrieved_provenance_and_excerpt() -> None:
+    """The application attaches a renderable excerpt from the selected retrieved chunk."""
     claims = validate_answer_draft(_draft(), [_chunk()])
 
     assert claims[0].citations[0].anchor_key == "art-2-inciso-iii"
     assert claims[0].citations[0].source_title == "IN RFB nº 2.312/2026"
+    assert claims[0].citations[0].excerpt == _chunk().chunk_text
+    serialized = claims[0].citations[0].to_dict()
+    assert serialized["excerpt"] == _chunk().chunk_text
+    assert "quote" not in serialized
 
 
 def test_validator_rejects_citation_to_a_chunk_that_was_not_retrieved() -> None:
     """A model cannot cite a valid-looking identifier outside this retrieval result."""
     with pytest.raises(AnswerValidationError, match="was not retrieved"):
         validate_answer_draft(_draft(chunk_id="invented-chunk"), [_chunk()])
-
-
-def test_validator_rejects_quote_that_is_not_in_the_cited_chunk() -> None:
-    """A citation must contain an exact excerpt, not merely a plausible paraphrase."""
-    with pytest.raises(AnswerValidationError, match="does not appear"):
-        validate_answer_draft(_draft(quote="A pessoa fica dispensada em qualquer situação."), [_chunk()])
-
-
-def test_validator_identifies_the_exact_claim_and_citation_that_failed() -> None:
-    """A local debug trace must point to the failing citation, not only the whole answer."""
-    with pytest.raises(
-        AnswerValidationError,
-        match=r"Claim 1, citation 1 for chunk chunk-1: Citation quote does not appear",
-    ):
-        validate_answer_draft(_draft(quote="A pessoa fica dispensada em qualquer situação."), [_chunk()])
 
 
 def test_validator_rejects_an_abstention_with_factual_claims() -> None:
@@ -119,14 +107,14 @@ def test_answer_question_abstains_without_calling_provider_when_retrieval_is_emp
 def test_answer_question_returns_safe_abstention_when_provider_citation_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A misquoted provider answer is rejected without exposing a traceback to the caller."""
+    """An unsupported provider citation is rejected without exposing a traceback to callers."""
     monkeypatch.setattr(answers, "search_chunks", lambda *_args, **_kwargs: [_chunk()])
 
     class InvalidCitationProvider:
         model = "test"
 
         def draft_answer(self, *_args: object) -> AnswerDraft:
-            return _draft(quote="Este trecho não existe na fonte oficial recuperada.")
+            return _draft(chunk_id="not-retrieved")
 
     result = answer_question(None, "Pergunta", InvalidCitationProvider())  # type: ignore[arg-type]
 
@@ -146,7 +134,7 @@ def test_answer_question_reports_rejected_draft_only_to_an_opt_in_diagnostic_hoo
         model = "test"
 
         def draft_answer(self, *_args: object) -> AnswerDraft:
-            return _draft(quote="Este trecho não existe na fonte oficial recuperada.")
+            return _draft(chunk_id="not-retrieved")
 
     result = answer_question(
         None,
@@ -159,10 +147,8 @@ def test_answer_question_reports_rejected_draft_only_to_an_opt_in_diagnostic_hoo
 
     assert result.abstain is True
     assert rejected[0][0] is not None
-    assert rejected[0][0].claims[0].citations[0].quote == (
-        "Este trecho não existe na fonte oficial recuperada."
-    )
-    assert "does not appear" in str(rejected[0][1])
+    assert rejected[0][0].claims[0].citations[0].chunk_id == "not-retrieved"
+    assert "was not retrieved" in str(rejected[0][1])
     assert rejected[0][2][0].chunk_id == "chunk-1"
 
 
@@ -178,7 +164,6 @@ def test_openai_provider_uses_strict_structured_output_without_storing_response(
                 "citations": [
                     {
                         "chunk_id": "chunk-1",
-                        "quote": "ganho de capital na alienação de bens ou direitos sujeito à incidência do imposto.",
                     }
                 ],
             }

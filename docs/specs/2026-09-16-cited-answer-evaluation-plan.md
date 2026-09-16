@@ -16,7 +16,8 @@ product and must be measured separately.
 - use `semantic` retrieval as the development default for the first cited-answer vertical slice
 - define a structured answer contract: answer text, citations, limitations/abstention, and an
   optional clarification question
-- validate every returned citation against the exact retrieved chunk before displaying an answer
+- validate every model-selected citation against the retrieved chunk before displaying an
+  application-controlled excerpt
 - add a small, human-authored answer-evaluation set with expected claims, required citations, and
   expected abstention or clarification behaviour where applicable
 - measure answer correctness, claim grounding, citation correctness/completeness, and abstention
@@ -35,9 +36,9 @@ We will separate the pipeline into two observable stages:
 
 1. **Retrieval:** select up to three official chunks and record their anchors, source versions,
    ranks, and strategy.
-2. **Answering:** ask a model to produce structured output that can cite only those retrieved
-   chunk IDs. Application code rejects unknown citations and preserves the cited excerpts for
-   review.
+2. **Answering:** ask a model to produce structured output that can select only those retrieved
+   chunk IDs. Application code rejects unknown citations and attaches the selected chunk text as
+   the cited excerpt for review.
 
 The initial answer evaluation will use human-authored expected claims and citation anchors. This
 keeps the legal standard inspectable. An LLM-as-judge may later help scale reviews, but only after
@@ -85,7 +86,7 @@ review rubric for claim correctness, scope, clarity, and repetition.
 ## First Live-Path Finding
 
 The first live answer on 2026-09-16 passed deterministic citation validation: its chunk IDs were
-retrieved and both quoted excerpts occurred verbatim in their cited chunks. Manual review still
+retrieved and its model-copied excerpts occurred verbatim in their cited chunks. Manual review still
 found an answer-quality defect: it stated the capital-gain rule categorically while omitting the
 source's `pessoa física residente no Brasil` condition. This confirms that citation integrity is
 necessary but does not prove semantic completeness or safe wording. The provider instruction now
@@ -97,11 +98,11 @@ omitted the residency condition and introduced a broad claim about `outras condi
 fully supported by its attached excerpts. Prompt hardening is therefore only a mitigation. It does
 not replace a human-authored answer fixture or manual review of early results.
 
-Provider output can also fail deterministic quote validation when it transcribes an excerpt
-imperfectly. This is a safe rejection, not a reason to weaken exact quote validation. The answer
-boundary must return a verified-abstention result rather than expose an internal traceback; future
-work may reduce these rejections by letting the model select stable application-provided excerpt
-identifiers instead of copying quote text.
+Provider output can fail when it transcribes an excerpt imperfectly. The original exact-match
+rejection was safe, but copying legal text was an unnecessary model responsibility. The answer
+contract now lets the model select only retrieved `chunk_id` values and lets application code attach
+the literal chunk excerpt. The answer boundary still returns safe abstention for malformed output or
+unknown chunk IDs rather than exposing an internal traceback.
 
 For local root-cause analysis, the `answer --debug` command writes a rejected untrusted draft,
 the validation reason, and the retrieved chunks to `stderr`. It is opt-in and must not be used in
@@ -115,10 +116,9 @@ citations and one invalid supplementary citation. The invalid citation replaced 
 of a long official list with `...`; those characters are not a literal excerpt, so deterministic
 validation correctly rejected it. This is not evidence to introduce fuzzy quote matching: fuzzy
 matching could accept a modified monetary threshold, exception, or scope condition. The case is
-recorded as `answer-005` in the answer-development fixture. Future work should replace
-model-copied quotes with stable application-provided evidence excerpts or identifiers, and assess
-claim-level handling of a rejected supplementary citation before changing the all-or-nothing
-answer boundary.
+recorded as `answer-005` in the answer-development fixture. The contract now uses application-
+controlled excerpts keyed by retrieved chunk ID; see
+`2026-09-16-application-controlled-citations.md`.
 
 ## Test And Eval Plan
 

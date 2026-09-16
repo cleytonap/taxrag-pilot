@@ -19,7 +19,8 @@ restated the same rule three times and did not answer the user's practical quest
 
 ## Assumptions
 
-- application citation validation remains the authority for citation identity and quote membership
+- application citation validation remains the authority for citation identity and attaches the
+  displayed excerpt from the selected chunk
 - an LLM or keyword matcher cannot yet be trusted as the sole judge of legal prose quality
 - this is a development fixture, not a blind holdout or a release gate
 
@@ -61,5 +62,5 @@ defaults to lexical retrieval so this check makes no embedding or answer-model A
 
 The live `R$ 3.000,00 por mês` failure became `answer-005`. It exposed a model-generated
 ellipsis in a supposedly literal quote. The fixture records the expected annual calculation,
-material conditions, non-repetition requirement, and the prohibition on ellipses in displayed
-quotes; no fuzzy matching was added.
+material conditions, non-repetition requirement, and application-controlled evidence display.
+The answer contract now carries selected chunk IDs only; no fuzzy matching was added.

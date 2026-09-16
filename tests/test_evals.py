@@ -120,7 +120,7 @@ def test_answer_evaluation_reports_structural_checks_without_judging_prose() -> 
         source_title="IN RFB nº 2.312/2026",
         canonical_url="https://example.test",
         authority_level="tax_authority_norm",
-        quote="recebeu rendimentos tributáveis cuja soma foi superior ao limite.",
+        excerpt="recebeu rendimentos tributáveis cuja soma foi superior ao limite.",
     )
     answer = CitedAnswer(
         question=case.question,
