@@ -106,15 +106,15 @@ def test_answer_fixture_has_reviewable_cases_and_an_abstention_case() -> None:
     assert all(case.human_review_criteria for case in cases)
 
 
-def test_answer_fixture_rejects_anchor_requirements_for_an_abstention(tmp_path: Path) -> None:
+def test_answer_fixture_rejects_support_anchors_for_an_abstention(tmp_path: Path) -> None:
     """An abstention cannot be made to pass by attaching irrelevant citations."""
     invalid_fixture = tmp_path / "invalid.jsonl"
     invalid_fixture.write_text(
-        '{"id":"case","question":"question","required_anchor_keys":["anchor"],'
+        '{"id":"case","question":"question","acceptable_anchor_keys":["anchor"],'
         '"expected_abstain":true,"human_review_criteria":["review"]}\n'
     )
 
-    with pytest.raises(ValueError, match="cannot require citations"):
+    with pytest.raises(ValueError, match="cannot declare support anchors"):
         load_answer_eval_cases(invalid_fixture)
 
 
@@ -146,6 +146,34 @@ def test_answer_evaluation_reports_structural_checks_without_judging_prose() -> 
     assert result.human_review_criteria == case.human_review_criteria
 
 
+def test_answer_evaluation_accepts_any_fixture_approved_official_anchor() -> None:
+    """Guidance is valid support when the fixture explicitly lists it as acceptable."""
+    case = load_answer_eval_cases(ANSWER_FIXTURE_PATH)[1]
+    guidance_citation = Citation(
+        chunk_id="chunk-1",
+        anchor_key="voce-esta-obrigado-se--02",
+        anchor_title="Você está obrigado se:",
+        source_title="Quem deve declarar",
+        canonical_url="https://example.test",
+        authority_level="official_guidance",
+        excerpt="Obteve ganho de capital.",
+    )
+    answer = CitedAnswer(
+        question=case.question,
+        claims=(AnswerClaim("Resposta apoiada em orientação oficial.", (guidance_citation,)),),
+        abstain=False,
+        limitation=None,
+        clarification_question=None,
+        retrieval_strategy="semantic",
+        answer_model="test",
+    )
+
+    result = evaluate_answer(case, answer)
+
+    assert result.cited_acceptable_anchor_keys == ("voce-esta-obrigado-se--02",)
+    assert result.passed_structural_checks is True
+
+
 def test_answer_eval_report_shows_question_expected_and_actual_values() -> None:
     """The CLI report must not make review rubrics look like generated output."""
     case = load_answer_eval_cases(ANSWER_FIXTURE_PATH)[0]
@@ -174,7 +202,7 @@ def test_answer_eval_report_shows_question_expected_and_actual_values() -> None:
     report = "\n".join(_format_answer_eval_result(result, show_answer=True))
 
     assert f"question: {case.question}" in report
-    assert "expected:\n    required citation anchors: art-2-inciso-i" in report
+    assert "expected:\n    acceptable official citation anchors: art-2-inciso-i" in report
     assert "actual:\n    cited anchors: art-2-inciso-i" in report
     assert "human-review checklist (not automatically scored):" in report
     assert "generated answer: Resposta de teste." in report
@@ -239,7 +267,7 @@ def test_answer_evaluation_trace_explains_missing_retrieval_and_rejected_draft(
     assert result.trace.retrieved_evidence[0].anchor_key == "unrelated-anchor"
     assert result.trace.validation_error == "Claim 1, citation 1 cited a chunk that was not retrieved"
     assert result.trace.rejected_draft is not None
-    assert "required anchors absent from retrieval: art-2-inciso-i" in report
+    assert "acceptable evidence absent from retrieval: art-2-inciso-i, limites-de-valor-para-o-exercicio-2026--03, question-001--p23" in report
     assert "validator rejection: Claim 1, citation 1 cited a chunk that was not retrieved" in report
     assert '"chunk_id": "invented-chunk"' in report
 

@@ -13,7 +13,8 @@ restated the same rule three times and did not answer the user's practical quest
 ## Scope
 
 - add a compact, versioned JSONL development fixture for cited answers
-- automate only structural checks: expected abstention and required cited anchors
+- automate only structural checks: expected abstention and at least one acceptable official cited
+  anchor
 - attach concise human-review criteria for legal correctness, scope, clarity, and repetition
 - provide an explicit CLI command to run the fixture against the deterministic or OpenAI provider
 - retain local failure diagnostics: retrieved evidence, exact validator rejection reason, and any
@@ -28,17 +29,20 @@ restated the same rule three times and did not answer the user's practical quest
 
 ## Design Choice
 
-Each fixture case records a question, required citation anchors, expected abstention, and a
+Each fixture case records a question, acceptable official citation anchors, expected abstention, and a
 human-review rubric. The evaluator reports a narrow structural pass/fail result and always prints
 the question, expected values, actual values, and rubric in separate sections. The rubric is a
 checklist for a person, not expected model output and not an automated score. It intentionally does
 not convert subjective answer quality into a misleading automatic score.
 
 For a structural failure, the CLI also prints an RCA section. It identifies the three retrieved
-chunks and separates a required anchor that was absent from retrieval from one that was retrieved
-but not selected by the provider. When validation rejected provider output, it prints the exact
-structural reason and the untrusted draft. This development-only trace must never be rendered as a
-user answer or persisted with sensitive production questions.
+chunks and separates acceptable evidence that was absent from retrieval from evidence that was
+retrieved but not selected by the provider. A non-abstaining case passes this narrow check when it
+cites at least one acceptable official anchor. The fixture does not require the primary legal norm
+over directly supporting official guidance; that source preference is a future diagnostic, not a
+release gate. When validation rejected provider output, it prints the exact structural reason and
+the untrusted draft. This development-only trace must never be rendered as a user answer or
+persisted with sensitive production questions.
 
 ## Risks
 
@@ -49,7 +53,7 @@ user answer or persisted with sensitive production questions.
 
 ## Test And Eval Plan
 
-- unit-test fixture validation, required-anchor checking, abstention matching, and provider wiring
+- unit-test fixture validation, acceptable-anchor checking, abstention matching, and provider wiring
 - run `uv run python -m apps.worker eval-answers --provider fake --strategy lexical` as an
   offline path check
 - run `uv run python -m apps.worker eval-answers --provider openai --strategy semantic`

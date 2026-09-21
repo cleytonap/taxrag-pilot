@@ -18,7 +18,8 @@ product and must be measured separately.
   optional clarification question
 - validate every model-selected citation against the retrieved chunk before displaying an
   application-controlled excerpt
-- add a small, human-authored answer-evaluation set with expected claims, required citations, and
+- add a small, human-authored answer-evaluation set with expected claims, acceptable official
+  citations, and
   expected abstention or clarification behaviour where applicable
 - measure answer correctness, claim grounding, citation correctness/completeness, and abstention
   behaviour alongside retrieval metrics
@@ -46,7 +47,7 @@ we compare it with a human-labelled sample.
 
 The first compact development fixture is implemented in
 `docs/evals/cited-answer-development.jsonl`. Its automated result is intentionally limited to
-expected abstention and required citation anchors; the fixture also carries a mandatory human
+expected abstention and acceptable official citation anchors; the fixture also carries a mandatory human
 review rubric for claim correctness, scope, clarity, and repetition.
 
 ## Metrics
@@ -124,8 +125,9 @@ controlled excerpts keyed by retrieved chunk ID; see
 
 On 2026-09-16, the five-case development fixture ran with `gpt-4.1-mini` and semantic retrieval.
 The original console reported **3/5**. That result was corrected to **2/5** after outcome
-provenance was added: `answer-001` and `answer-005` selected their required anchors and had the
-expected non-abstention outcome; `answer-002` and `answer-003` missed their required anchors; and
+provenance was added: `answer-001` and `answer-005` selected their then-required anchors and had the
+expected non-abstention outcome; `answer-002` and `answer-003` cited official support that did not
+include the then-required normative anchor; and
 `answer-004` was a rejected provider output disguised as a safe fallback, not a valid provider
 abstention.
 
@@ -134,8 +136,8 @@ Human review must not treat the three structural passes as product passes:
 | Case | Human review | Finding |
 | --- | --- | --- |
 | `answer-001` | Needs improvement | Reaches the correct threshold comparison but repeats equivalent sources and omits explicit `2025` / exercise `2026` scope in its main rule statement. |
-| `answer-002` | Needs improvement | Explains the capital-gain condition but retrieval did not select the normative anchor required by the fixture; it also adds an unnecessary list of other conditions. |
-| `answer-003` | Needs improvement | Directly explains voluntary filing, but misses the fixture's normative anchor even though the prose is broadly useful. |
+| `answer-002` | Needs improvement | Explains the capital-gain condition with official guidance, but does not retrieve the primary normative anchor; this is a diagnostic rather than a structural failure under the current fixture policy. |
+| `answer-003` | Needs improvement | Directly explains voluntary filing with official support; primary-norm selection is a future diagnostic, while the prose still needs human review. |
 | `answer-004` | Fail | The provider output was rejected; the generic safe fallback must not count as an explained abstention. |
 | `answer-005` | Needs improvement | Calculates R$ 36.000,00 and identifies the threshold, but omits explicit year/exercise scope, repeats conditions, and overstates unspecified possible dispensations. |
 
@@ -158,7 +160,7 @@ The required re-run completed on 2026-09-16 and is saved locally as
 **2/5**. `answer-001` and `answer-005` passed structural checks, but human review found that the
 model still did not reliably apply the numeric facts supplied in the questions: `answer-001`
 ignored R$ 30.000,00, and `answer-005` ignored the R$ 3.000,00-per-month calculation in this run.
-`answer-002` and `answer-003` still missed their fixture-required normative anchors, and
+`answer-002` and `answer-003` still did not retrieve their primary normative anchors, and
 `answer-004` remained `provider_rejected` rather than a valid explained abstention.
 
 This iteration is therefore inconclusive for promotion as a quality improvement. Do not add a

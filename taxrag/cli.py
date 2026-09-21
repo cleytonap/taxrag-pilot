@@ -38,20 +38,20 @@ def _format_answer_eval_result(result: AnswerEvalResult, *, show_answer: bool) -
     report keeps their expected and actual values visibly separate.
     """
     answer = result.answer
-    required = ", ".join(result.required_anchor_keys) or "none"
+    acceptable = ", ".join(result.acceptable_anchor_keys) or "none"
     cited = ", ".join(result.cited_anchor_keys) or "none"
-    missing = ", ".join(result.missing_required_anchor_keys) or "none"
+    cited_acceptable = ", ".join(result.cited_acceptable_anchor_keys) or "none"
     structural_status = "pass" if result.passed_structural_checks else "fail"
 
     lines = [
         result.case_id,
         f"  question: {answer.question}",
         "  expected:",
-        f"    required citation anchors: {required}",
+        f"    acceptable official citation anchors: {acceptable}",
         f"    provider abstention: {result.expected_abstain}",
         "  actual:",
         f"    cited anchors: {cited}",
-        f"    missing required anchors: {missing}",
+        f"    cited acceptable anchors: {cited_acceptable}",
         f"    abstain: {answer.abstain}",
         f"    outcome: {answer.outcome}",
         f"  automated structural result: {structural_status}",
@@ -73,12 +73,7 @@ def _format_answer_eval_trace(result: AnswerEvalResult) -> list[str]:
     """Render local RCA facts for a failed evaluation without presenting drafts as answers."""
     trace = result.trace
     retrieved_anchors = {evidence.anchor_key for evidence in trace.retrieved_evidence}
-    missing_from_retrieval = [
-        anchor for anchor in result.missing_required_anchor_keys if anchor not in retrieved_anchors
-    ]
-    available_but_not_cited = [
-        anchor for anchor in result.missing_required_anchor_keys if anchor in retrieved_anchors
-    ]
+    acceptable_retrieved = set(result.acceptable_anchor_keys) & retrieved_anchors
     lines = ["  failure diagnostics:"]
     if trace.retrieved_evidence:
         lines.append("    retrieved evidence:")
@@ -89,15 +84,15 @@ def _format_answer_eval_trace(result: AnswerEvalResult) -> list[str]:
         )
     else:
         lines.append("    retrieved evidence: none")
-    if missing_from_retrieval:
+    if result.acceptable_anchor_keys and not acceptable_retrieved:
         lines.append(
-            "    required anchors absent from retrieval: "
-            f"{', '.join(missing_from_retrieval)}"
+            "    acceptable evidence absent from retrieval: "
+            f"{', '.join(result.acceptable_anchor_keys)}"
         )
-    if available_but_not_cited:
+    if acceptable_retrieved and not result.cited_acceptable_anchor_keys:
         lines.append(
-            "    required anchors retrieved but not cited by the provider: "
-            f"{', '.join(available_but_not_cited)}"
+            "    acceptable evidence retrieved but not cited by the provider: "
+            f"{', '.join(sorted(acceptable_retrieved))}"
         )
     if trace.validation_error:
         lines.append(f"    validator rejection: {trace.validation_error}")

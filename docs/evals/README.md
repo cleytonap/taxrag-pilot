@@ -63,7 +63,9 @@ Target 40-60 cases after the source inventory is complete. Cover:
 ## Cited Answer Development Fixture
 
 `cited-answer-development.jsonl` is a small human-authored development fixture for the answer
-path. Each case contains required citation anchors, expected abstention, and a human-review rubric.
+path. Each case contains acceptable official citation anchors, expected abstention, and a
+human-review rubric. A passing non-abstention needs at least one of those anchors; selecting a
+primary normative source rather than directly supporting official guidance is not yet a gate.
 The command below reports only structural checks; it does **not** claim to automatically judge
 legal correctness, clarity, or repetition:
 

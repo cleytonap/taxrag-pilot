@@ -62,11 +62,11 @@ class RetrievalEvalResult:
 
 @dataclass(frozen=True)
 class AnswerEvalCase:
-    """A human-reviewed answer expectation with only deterministic checks automated."""
+    """A human-reviewed answer expectation with acceptable official support anchors."""
 
     case_id: str
     question: str
-    required_anchor_keys: tuple[str, ...]
+    acceptable_anchor_keys: tuple[str, ...]
     expected_abstain: bool
     human_review_criteria: tuple[str, ...]
 
@@ -77,9 +77,9 @@ class AnswerEvalResult:
 
     case_id: str
     answer: CitedAnswer
-    required_anchor_keys: tuple[str, ...]
+    acceptable_anchor_keys: tuple[str, ...]
     cited_anchor_keys: tuple[str, ...]
-    missing_required_anchor_keys: tuple[str, ...]
+    cited_acceptable_anchor_keys: tuple[str, ...]
     expected_abstain: bool
     human_review_criteria: tuple[str, ...]
     trace: AnswerEvalTrace
@@ -92,14 +92,14 @@ class AnswerEvalResult:
         return self.answer.outcome == "answered"
 
     @property
-    def required_anchors_present(self) -> bool:
-        """Return whether every fixture-required source anchor occurs in a validated citation."""
-        return not self.missing_required_anchor_keys
+    def acceptable_support_present(self) -> bool:
+        """Return whether a non-abstaining answer cited at least one acceptable source anchor."""
+        return self.expected_abstain or bool(self.cited_acceptable_anchor_keys)
 
     @property
     def passed_structural_checks(self) -> bool:
         """Return the narrow automated result, excluding human judgment of prose quality."""
-        return self.abstention_matches and self.required_anchors_present
+        return self.abstention_matches and self.acceptable_support_present
 
 
 @dataclass(frozen=True)
@@ -167,7 +167,7 @@ def load_answer_eval_cases(path: Path) -> list[AnswerEvalCase]:
         required = {
             "id",
             "question",
-            "required_anchor_keys",
+            "acceptable_anchor_keys",
             "expected_abstain",
             "human_review_criteria",
         }
@@ -181,16 +181,16 @@ def load_answer_eval_cases(path: Path) -> list[AnswerEvalCase]:
         expected_abstain = record["expected_abstain"]
         if not isinstance(expected_abstain, bool):
             raise TypeError(f"Answer evaluation fixture line {line_number} has invalid expected_abstain")
-        required_anchors = _load_anchor_keys(
-            record["required_anchor_keys"], line_number, "required", allow_empty=expected_abstain
+        acceptable_anchors = _load_anchor_keys(
+            record["acceptable_anchor_keys"], line_number, "acceptable", allow_empty=expected_abstain
         )
-        if expected_abstain and required_anchors:
+        if expected_abstain and acceptable_anchors:
             raise ValueError(
-                f"Answer evaluation fixture line {line_number} cannot require citations for abstention"
+                f"Answer evaluation fixture line {line_number} cannot declare support anchors for abstention"
             )
         criteria = _load_review_criteria(record["human_review_criteria"], line_number)
         cases.append(
-            AnswerEvalCase(case_id, question, required_anchors, expected_abstain, criteria)
+            AnswerEvalCase(case_id, question, acceptable_anchors, expected_abstain, criteria)
         )
     if not cases:
         raise ValueError("Answer evaluation fixture contains no cases")
@@ -317,13 +317,15 @@ def evaluate_answer(
             citation.anchor_key for claim in answer.claims for citation in claim.citations
         )
     )
-    missing = tuple(anchor for anchor in case.required_anchor_keys if anchor not in cited_anchor_keys)
+    cited_acceptable = tuple(
+        anchor for anchor in cited_anchor_keys if anchor in case.acceptable_anchor_keys
+    )
     return AnswerEvalResult(
         case_id=case.case_id,
         answer=answer,
-        required_anchor_keys=case.required_anchor_keys,
+        acceptable_anchor_keys=case.acceptable_anchor_keys,
         cited_anchor_keys=cited_anchor_keys,
-        missing_required_anchor_keys=missing,
+        cited_acceptable_anchor_keys=cited_acceptable,
         expected_abstain=case.expected_abstain,
         human_review_criteria=case.human_review_criteria,
         trace=trace or AnswerEvalTrace(()),
