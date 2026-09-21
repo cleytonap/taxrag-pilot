@@ -282,11 +282,10 @@ def validate_answer_draft(
     """Accept only claims that select chunks retrieved for this question.
 
     The application, not the provider, attaches each displayed source excerpt. This keeps
-    citations literal and stable without asking the provider to transcribe legal text.
+    citations literal and stable without asking the provider to transcribe legal text. An
+    abstention never renders claims, so any draft claims are deliberately discarded.
     """
     if draft.abstain:
-        if draft.claims:
-            raise AnswerValidationError("An abstaining answer must not include factual claims")
         return ()
     if not draft.claims:
         raise AnswerValidationError("A non-abstaining answer must include at least one claim")
@@ -380,14 +379,13 @@ def _instructions() -> str:
         "limites, exceções e requisitos de residência quando existirem. "
         "Quando a evidência informar ano-calendário e exercício, declare ambos explicitamente. "
         "Se a pergunta pedir um ano-calendário ou exercício não coberto pelas evidências, use "
-        "abstain=true, não inclua claims e explique a limitação. "
+        "abstain=true, deixe claims vazio e explique a limitação no campo limitation. "
         "Responda de forma concisa. Não repita a mesma regra usando fontes equivalentes e não "
         "liste outras hipóteses de obrigatoriedade, salvo se forem necessárias para evitar uma "
         "conclusão enganosa. "
         "Cada afirmação factual deve ter uma ou mais citações com um chunk_id fornecido. "
         "Nunca invente chunk_id ou regra. A aplicação adicionará o trecho literal da fonte. "
-        "Se a evidência não bastar, use abstain=true "
-        "e não inclua claims."
+        "Se a evidência não bastar, use abstain=true, deixe claims vazio e não invente regra."
     )
 
 

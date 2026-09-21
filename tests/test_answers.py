@@ -72,17 +72,41 @@ def test_validator_rejects_citation_to_a_chunk_that_was_not_retrieved() -> None:
         validate_answer_draft(_draft(chunk_id="invented-chunk"), [_chunk()])
 
 
-def test_validator_rejects_an_abstention_with_factual_claims() -> None:
-    """Abstention is a safety outcome, not a way to attach an unsupported answer."""
-    invalid = AnswerDraft(
+def test_validator_discards_an_abstention_draft_claims() -> None:
+    """Abstention claims are never rendered, so they cannot make the final answer factual."""
+    draft = AnswerDraft(
         claims=_draft().claims,
         abstain=True,
         limitation="Não há evidência suficiente.",
         clarification_question=None,
     )
 
-    with pytest.raises(AnswerValidationError, match="must not include factual claims"):
-        validate_answer_draft(invalid, [_chunk()])
+    assert validate_answer_draft(draft, [_chunk()]) == ()
+
+
+def test_answer_question_accepts_an_abstention_with_discarded_draft_claims(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A model's explanation in the wrong field must not turn a safe abstention into a rejection."""
+    monkeypatch.setattr(answers, "search_chunks", lambda *_args, **_kwargs: [_chunk()])
+
+    class AbstainingProvider:
+        model = "test"
+
+        def draft_answer(self, *_args: object) -> AnswerDraft:
+            return AnswerDraft(
+                claims=_draft().claims,
+                abstain=True,
+                limitation="A evidência não cobre o exercício solicitado.",
+                clarification_question="Qual exercício você quer consultar?",
+            )
+
+    result = answer_question(None, "Pergunta", AbstainingProvider())  # type: ignore[arg-type]
+
+    assert result.outcome == "provider_abstained"
+    assert result.abstain is True
+    assert result.claims == ()
+    assert result.limitation == "A evidência não cobre o exercício solicitado."
 
 
 def test_answer_question_abstains_without_calling_provider_when_retrieval_is_empty(

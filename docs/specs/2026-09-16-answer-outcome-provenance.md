@@ -16,6 +16,8 @@ look safer than it is.
 - add an explicit outcome to every `CitedAnswer`
 - distinguish a provider's valid abstention from no retrieved evidence and rejected provider output
 - require `provider_abstained` for an answer fixture case expecting abstention
+- discard rather than reject draft claims when `abstain=true`, because abstention claims are never
+  rendered in the final answer
 
 ## Design Choice
 
@@ -23,16 +25,25 @@ The outcome is one of `answered`, `provider_abstained`, `no_retrieved_evidence`,
 `provider_rejected`. All non-answer outcomes remain safe user-facing abstentions, but only a valid
 provider abstention can satisfy an abstention expectation in the evaluator.
 
+An abstaining draft is normalized to an empty final claim list. The prompt still asks the provider
+to put its explanation in `limitation` and leave `claims` empty, but a stray draft claim is not
+shown to the user and does not justify replacing an otherwise useful abstention with a generic
+fallback. Non-abstaining claims remain subject to full retrieved-chunk validation.
+
 ## Risks
 
 - callers must not read `abstain=true` as proof of a successful model behavior without inspecting
   `outcome`
 - this is outcome provenance, not a semantic correctness judgment
+- `limitation` remains provider prose, so this normalization does not prove its legal correctness;
+  the answer fixture and human review continue to assess its scope
 
 ## Test And Eval Plan
 
 - unit-test every safe outcome category
 - unit-test that `provider_rejected` fails an expected-abstention fixture case
+- unit-test that an abstaining draft with stray claims produces no final claims and retains its
+  limitation
 
 ## Definition Of Done
 
