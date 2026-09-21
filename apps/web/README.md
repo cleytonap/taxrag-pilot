@@ -1,6 +1,31 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+## Eval Workshop
+
+The local Eval Workshop lets developers inspect and edit the two Git-tracked JSONL evaluation
+suites, read past local artifacts, and run one question with its full retrieval metadata.
+
+Start the API from the repository root:
+
+```bash
+uv run uvicorn apps.api.main:app --reload --port 8000
+```
+
+Then start this application in a second terminal:
+
+```bash
+pnpm dev
+```
+
+Open `http://localhost:3000`. It targets `http://127.0.0.1:8000` by default; set
+`NEXT_PUBLIC_TAXRAG_API_BASE_URL` to choose another local API address. Fixture edits change the
+working tree and should be reviewed and committed with Git. This unauthenticated developer tool
+must not be exposed outside localhost.
+
+The Question Lab defaults to a deterministic fake provider. Selecting OpenAI requires an explicit
+confirmation because it sends the question and retrieved chunks to OpenAI and may incur API cost.
+
+## Generic Next.js Setup
 
 First, run the development server:
 
