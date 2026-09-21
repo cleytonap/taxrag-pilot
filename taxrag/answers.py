@@ -103,14 +103,24 @@ class CitedAnswer:
 
     @property
     def text(self) -> str:
-        """Return display text assembled only from validated provider claims."""
+        """Return claim text assembled only from validated provider claims."""
         return "\n\n".join(claim.text for claim in self.claims)
+
+    @property
+    def display_text(self) -> str:
+        """Return the complete user-facing message, including a safe abstention explanation."""
+        if self.text:
+            return self.text
+        return "\n\n".join(
+            part for part in (self.limitation, self.clarification_question) if part
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize an answer together with the evidence needed to inspect it."""
         return {
             "question": self.question,
             "text": self.text,
+            "display_text": self.display_text,
             "claims": [claim.to_dict() for claim in self.claims],
             "abstain": self.abstain,
             "limitation": self.limitation,

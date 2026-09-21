@@ -30,6 +30,11 @@ to put its explanation in `limitation` and leave `claims` empty, but a stray dra
 shown to the user and does not justify replacing an otherwise useful abstention with a generic
 fallback. Non-abstaining claims remain subject to full retrieved-chunk validation.
 
+`CitedAnswer.text` remains the claim-only field used for citation/provenance inspection.
+`CitedAnswer.display_text` is the user-facing field: it returns claims for an ordinary answer, or
+the limitation followed by the clarification question for an abstention. Callers rendering an
+answer must use `display_text` rather than treating an empty claim list as an empty response.
+
 ## Risks
 
 - callers must not read `abstain=true` as proof of a successful model behavior without inspecting
@@ -44,6 +49,7 @@ fallback. Non-abstaining claims remain subject to full retrieved-chunk validatio
 - unit-test that `provider_rejected` fails an expected-abstention fixture case
 - unit-test that an abstaining draft with stray claims produces no final claims and retains its
   limitation
+- unit-test that an abstention has empty claim text but non-empty user-facing display text
 
 ## Definition Of Done
 

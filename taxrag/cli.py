@@ -61,7 +61,7 @@ def _format_answer_eval_result(result: AnswerEvalResult, *, show_answer: bool) -
     if not result.passed_structural_checks:
         lines.extend(_format_answer_eval_trace(result))
     if show_answer:
-        lines.append(f"  generated answer: {answer.text or '[abstained]'}")
+        lines.append(f"  display answer: {answer.display_text or '[no display text]'}")
         if answer.limitation:
             lines.append(f"  limitation: {answer.limitation}")
         if answer.clarification_question:

@@ -107,6 +107,12 @@ def test_answer_question_accepts_an_abstention_with_discarded_draft_claims(
     assert result.abstain is True
     assert result.claims == ()
     assert result.limitation == "A evidência não cobre o exercício solicitado."
+    assert result.text == ""
+    assert result.display_text == (
+        "A evidência não cobre o exercício solicitado.\n\n"
+        "Qual exercício você quer consultar?"
+    )
+    assert result.to_dict()["display_text"] == result.display_text
 
 
 def test_answer_question_abstains_without_calling_provider_when_retrieval_is_empty(

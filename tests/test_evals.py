@@ -205,7 +205,7 @@ def test_answer_eval_report_shows_question_expected_and_actual_values() -> None:
     assert "expected:\n    acceptable official citation anchors: art-2-inciso-i" in report
     assert "actual:\n    cited anchors: art-2-inciso-i" in report
     assert "human-review checklist (not automatically scored):" in report
-    assert "generated answer: Resposta de teste." in report
+    assert "display answer: Resposta de teste." in report
 
 
 def test_answer_evaluation_does_not_count_a_rejected_provider_output_as_abstention() -> None:
