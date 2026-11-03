@@ -1,5 +1,7 @@
 # Eval Manager Foundation
 
+Status: Implemented
+
 ## Problem Statement
 
 Retrieval and cited-answer fixtures, their configurations, and their local run artifacts are
@@ -28,6 +30,11 @@ Use a small in-repository manager rather than adopting an external platform now.
 understands TaxRAG's specific fixture contracts and application-controlled citations, while
 keeping the workflow visible for learning. It exposes only known fixture paths and artifact file
 names; it does not accept arbitrary filesystem paths.
+
+The Next.js app forwards its Eval Workshop requests through a same-origin route to FastAPI. This
+keeps the browser away from cross-origin API calls, while the proxy only permits the manager's
+known endpoints. The API remains local and diagnostic retrieval still requires the Postgres
+service and migrated schema.
 
 ## Risks
 

@@ -3,15 +3,21 @@
 import { FormEvent, useEffect, useState } from "react";
 import styles from "./page.module.css";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_TAXRAG_API_BASE_URL ?? "http://127.0.0.1:8000";
-
 type Suite = { id: string; label: string; path: string; case_count: number; cases: Array<{ case_id: string; question: string; acceptable_anchor_keys: string[] }> };
 type Fixture = { id: string; path: string; content: string; sha256: string; cases: Suite["cases"] };
 type Artifact = { name: string; size_bytes: number; modified_at: number; format: string };
 type DebugResult = { answer: { display_text: string; outcome: string; claims: Array<{ text: string; citations: Array<{ anchor_key: string; source_title: string; canonical_url: string }> }> }; retrieved_chunks: Array<{ rank: number; anchor_key: string; anchor_title: string; source_title: string; canonical_url: string; score: number; chunk_text: string }>; diagnostics: { validation_error: string | null; rejected_draft: unknown | null } };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  let response: Response;
+  try {
+    response = await fetch(`/api/taxrag${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("Cannot reach the local TaxRAG service. Check that the API and Next.js development servers are running.");
+    }
+    throw error;
+  }
   const body = (await response.json()) as T & { detail?: string };
   if (!response.ok) throw new Error(body.detail ?? `Request failed (${response.status})`);
   return body;

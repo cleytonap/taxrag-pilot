@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import SQLAlchemyError
 
 from taxrag.database import SessionLocal
 from taxrag.eval_manager import (
@@ -107,3 +108,11 @@ def debug_eval_answer(request: DebugAnswerRequest) -> dict[str, object]:
             raise HTTPException(status_code=422, detail=str(error)) from error
         except RuntimeError as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
+        except SQLAlchemyError as error:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The local database is unavailable. Start it with `docker compose up -d` "
+                    "and apply migrations with `uv run alembic upgrade head`."
+                ),
+            ) from error

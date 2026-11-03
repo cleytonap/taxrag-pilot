@@ -14,6 +14,35 @@ uv run python -m apps.worker ingest-source irpf-2026-quem-deve-declarar
 uv run python -m apps.worker process-source irpf-2026-quem-deve-declarar
 ```
 
+## Local Eval Workshop
+
+The Eval Workshop has two application servers: FastAPI serves the API, and Next.js serves the
+browser UI. Start the database first because diagnostic questions query the indexed source data:
+
+```bash
+docker compose up -d
+uv run alembic upgrade head
+```
+
+In one terminal, start the API and leave it running:
+
+```bash
+uv run uvicorn apps.api.main:app --reload
+```
+
+Confirm the API responds at <http://127.0.0.1:8000/health>. In a second terminal, start the web
+UI:
+
+```bash
+pnpm --dir apps/web dev
+```
+
+Open <http://localhost:3000>. The web server forwards the UI's API requests to
+`http://127.0.0.1:8000`, so the browser does not need direct cross-origin access. Keep both
+terminals running while using it. The fake answer provider does not need an API key. OpenAI
+requests also require `OPENAI_API_KEY` in the local `.env` and the explicit confirmation in the
+UI.
+
 The raw HTML is written to `var/object-storage/`. PostgreSQL retains the source,
 content hash, version metadata, and ingestion-run audit record.
 

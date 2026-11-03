@@ -1,3 +1,6 @@
+# Cleyton's side project
+temp/
+
 # Secrets and local configuration
 .env
 .env.*
