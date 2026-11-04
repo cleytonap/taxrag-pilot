@@ -12,7 +12,7 @@ Applicable calendar year: 2025
 | --- | --- | --- | --- | --- |
 | `irpf-2026-in-rfb-2312` | `tax_authority_norm` | HTML | Art. 2 and paragraphs | Canonical annual filing-obligation criteria and dispensations |
 | `irpf-2026-quem-deve-declarar` | `official_guidance` | HTML | Heading and table row | Accessible overview and current threshold table |
-| `irpf-2026-perguntas-respostas` | `official_guidance` | PDF | Question 001, pages 22-23 | Detailed explanation, exceptions, and user-verifiable page citation |
+| `irpf-2026-perguntas-respostas` | `official_guidance` | PDF | Questions 001-006, pages 23-26 | Filing-obligation explanations and user-verifiable page citations |
 
 ## Source Records
 
@@ -28,6 +28,7 @@ Applicable calendar year: 2025
 - required extraction anchors: `Art. 2`, each inciso, and each paragraph
 - refresh policy: once before each ingestion run and monthly while this exercise is active
 - admission status: active; first official version retrieved and processed on `2026-09-08`
+- tracked snapshot: `data/source-snapshots/irpf-2026-in-rfb-2312/f0a12419b3a23a768ceece8e0413e811fcfc63543457fd145ea13e2f9cefaf58/original.html`
 - access note: the Receita Normas URL is a JavaScript application shell, so it is not suitable for
   text extraction. The DOU publication is the preferred static official representation. The DOU
   disconnected the worker's original generic client but returned its public HTML when the request
@@ -45,6 +46,7 @@ Applicable calendar year: 2025
 - applicable period: exercise 2026, calendar year 2025
 - required extraction anchors: `Voce esta obrigado se`, `Limites de valor para o exercicio 2026`, `Quem nao precisa entregar a declaracao`
 - refresh policy: weekly during the filing period, monthly afterwards
+- tracked snapshot: `data/source-snapshots/irpf-2026-quem-deve-declarar/4e779e493e14ad8f6625da0362215fcd0b52657b0b3b6b96903f7c0492735e8/original.html`
 
 ### `irpf-2026-perguntas-respostas`
 
@@ -54,8 +56,9 @@ Applicable calendar year: 2025
 - canonical URL: <https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/perguntas-e-respostas/dirpf/p-r-irpf-2026-v1-00-2026-04-23.pdf>
 - page update observed: `27/04/2026 10:28`
 - applicable period: exercise 2026, calendar year 2025
-- required extraction anchors: question `001`, pages `22-23`; questions `002-010`, pages `23-25`
+- current extraction scope: questions `001-006`, pages `23-26`; the bundled PDF preserves the complete official manual for future extraction expansion
 - refresh policy: check monthly; retain every downloaded version by content hash
+- tracked snapshot: `data/source-snapshots/irpf-2026-perguntas-respostas/f3740385c07fa4dc52f8614d009dd5bd038fbeb8bd935f89da4e9bc26ed2a3b0/original.pdf`
 
 ## Admission Rule
 

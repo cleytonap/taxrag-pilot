@@ -9,14 +9,16 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from taxrag.config import settings
+from taxrag.config import PROJECT_ROOT, settings
 from taxrag.models import IngestionRun, Source, SourceVersion
 from taxrag.sources import ApprovedSource
 from taxrag.storage import LocalObjectStorage
 
 
-def ingest_source(session: Session, approved_source: ApprovedSource) -> IngestionRun:
-    """Fetch one allow-listed source and record an immutable content version when it changes."""
+def ingest_source(
+    session: Session, approved_source: ApprovedSource, *, from_snapshot: bool = False
+) -> IngestionRun:
+    """Fetch or load one approved source and record its immutable content version."""
     # Create the durable source identity once; each fetch is tracked separately as a run.
     source = session.scalar(select(Source).where(Source.source_key == approved_source.source_key))
     if source is None:
@@ -35,8 +37,12 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
     session.commit()
 
     try:
-        response = _fetch_source(approved_source)
-        content_hash = hashlib.sha256(response.content).hexdigest()
+        if from_snapshot:
+            content, content_type = _load_source_snapshot(approved_source)
+        else:
+            response = _fetch_source(approved_source)
+            content, content_type = response.content, response.headers["content-type"]
+        content_hash = hashlib.sha256(content).hexdigest()
         # The hash makes the ingestion operation idempotent even if it runs repeatedly.
         existing_version = session.scalar(
             select(SourceVersion).where(
@@ -52,13 +58,13 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
             return run
 
         storage_key = f"raw/{source.source_key}/{content_hash}/{approved_source.raw_filename}"
-        LocalObjectStorage(settings.object_storage_root).put_bytes(storage_key, response.content)
+        LocalObjectStorage(settings.object_storage_root).put_bytes(storage_key, content)
         # Store the raw artifact outside PostgreSQL and retain its verifiable pointer in the database.
         source_version = SourceVersion(
             source_id=source.id,
             content_hash=content_hash,
             storage_key=storage_key,
-            content_type=response.headers["content-type"],
+            content_type=content_type,
         )
         session.add(source_version)
         session.flush()
@@ -73,6 +79,24 @@ def ingest_source(session: Session, approved_source: ApprovedSource) -> Ingestio
         run.finished_at = datetime.now(UTC)
         session.commit()
         raise
+
+
+def _load_source_snapshot(approved_source: ApprovedSource) -> tuple[bytes, str]:
+    """Read a bundled source snapshot and verify it matches the registry's exact hash."""
+    if not approved_source.snapshot_path or not approved_source.snapshot_sha256:
+        raise ValueError(f"No bundled source snapshot is registered for {approved_source.source_key}")
+
+    snapshot_path = (PROJECT_ROOT / approved_source.snapshot_path).resolve()
+    if PROJECT_ROOT not in snapshot_path.parents:
+        raise ValueError("Bundled source snapshot path must remain inside the project")
+    content = snapshot_path.read_bytes()
+    actual_hash = hashlib.sha256(content).hexdigest()
+    if actual_hash != approved_source.snapshot_sha256:
+        raise ValueError(
+            f"Bundled source snapshot hash mismatch for {approved_source.source_key}: "
+            f"expected {approved_source.snapshot_sha256}, got {actual_hash}"
+        )
+    return content, approved_source.expected_content_type
 
 
 def _fetch_source(approved_source: ApprovedSource) -> httpx.Response:

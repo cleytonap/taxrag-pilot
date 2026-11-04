@@ -172,6 +172,8 @@ The knowledge base is a curated source registry, not a bulk download of every ta
 - Prefer official HTML for legislation and official web pages because it usually retains article, section, and link structure.
 - Ingest official PDFs when the authoritative material is published as a PDF, such as the annual `Perguntas e Respostas IRPF` manual.
 - Store the original downloaded artifact and the extracted text separately. Generate chunks and embeddings from extracted text; they are replaceable derived data.
+- Keep the small approved public source snapshots in `data/source-snapshots/` with content-addressed paths and verified hashes so a clean checkout can reproduce ingestion offline. Copy them into runtime object storage under ignored `var/` when ingesting.
+- Keep databases, extracted text, chunks, embeddings, and evaluation runs out of Git; these remain local derived/runtime data.
 - Give each source an authority label: `primary_legislation`, `regulation`, `tax_authority_norm`, or `official_guidance`.
 - Record canonical URL, retrieval timestamp, publication/update date, effective date or tax year, content hash, extraction method, and source status.
 - Do not start by crawling the whole web or every historical act. Admit a source only when it is relevant to the chosen V1 topic and has a clear official origin.

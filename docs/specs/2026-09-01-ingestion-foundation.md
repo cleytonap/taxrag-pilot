@@ -16,6 +16,7 @@ Build a local development foundation that:
 - defines versioned database schema migrations with SQLAlchemy and Alembic
 - fetches the approved Receita Federal "Quem deve declarar" HTML page
 - stores its raw HTML in local object storage at `var/object-storage/`
+- can instead load that source from its tracked, hash-verified snapshot without network access
 - records the source, source version, content hash, and ingestion run in PostgreSQL
 
 ## Out Of Scope
@@ -27,7 +28,11 @@ Build a local development foundation that:
 
 ## Design Choice
 
-Use explicit Python worker commands and a PostgreSQL-backed source registry. The raw artifact is stored outside the database; the database stores its immutable version metadata and storage key.
+Use explicit Python worker commands and a PostgreSQL-backed source registry. The exact approved
+public originals are tracked under `data/source-snapshots/` for offline reproducibility. During
+ingestion, either fetch the allow-listed URL or explicitly select its bundled snapshot. In both
+cases, store the raw artifact in local object storage outside the database; PostgreSQL stores its
+immutable version metadata and storage key.
 
 The source record is seeded from the approved source inventory, rather than allowing arbitrary URLs. An ingestion run is idempotent: re-fetching unchanged content records a successful no-change run without creating a duplicate source version.
 
@@ -51,16 +56,20 @@ The source record is seeded from the approved source inventory, rather than allo
 - Run the worker command twice and verify the second run detects unchanged content.
 - Verify the stored artifact hash matches the database record.
 - Verify the source version is linked to the approved canonical URL and authority label.
+- Ingest a registered snapshot without an HTTP request and verify its hash matches the source version.
 - Verify no `var/` artifact appears in `git status`.
 - Verify Docker Compose health checks and the API health endpoint succeed.
 
 ## Definition Of Done
 
 - A developer can start local infrastructure with one Docker Compose command.
-- A worker command fetches and preserves the approved HTML source.
+- A worker command fetches or locally loads and preserves the approved HTML source.
 - Database records show a source, one source version, and successful ingestion run.
 - Re-running the command does not duplicate an unchanged version.
 - The foundation is committed and pushed with generated artifacts excluded.
+
+The three original source snapshots are now committed separately under `data/source-snapshots/`;
+this does not change the rule that runtime objects and derived data under `var/` remain ignored.
 
 ## Implementation Evidence
 

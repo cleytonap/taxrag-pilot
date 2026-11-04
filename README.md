@@ -10,8 +10,25 @@ The project begins with reliable source ingestion before adding retrieval and an
 ```bash
 docker compose up -d
 uv run alembic upgrade head
-uv run python -m apps.worker ingest-source irpf-2026-quem-deve-declarar
+uv run python -m apps.worker ingest-source irpf-2026-quem-deve-declarar --from-snapshot
 uv run python -m apps.worker process-source irpf-2026-quem-deve-declarar
+```
+
+`--from-snapshot` loads the checked-in source file, verifies its SHA-256 hash, and copies it into
+`var/object-storage/` without contacting the source website. PostgreSQL and Docker are still
+required. To check for an updated official version instead, omit `--from-snapshot`; ingestion then
+fetches the registered canonical URL.
+
+To seed all three approved sources from the bundled snapshots, run the ingest and process commands
+for each source key:
+
+```bash
+uv run python -m apps.worker ingest-source irpf-2026-quem-deve-declarar --from-snapshot
+uv run python -m apps.worker process-source irpf-2026-quem-deve-declarar
+uv run python -m apps.worker ingest-source irpf-2026-perguntas-respostas --from-snapshot
+uv run python -m apps.worker process-source irpf-2026-perguntas-respostas
+uv run python -m apps.worker ingest-source irpf-2026-in-rfb-2312 --from-snapshot
+uv run python -m apps.worker process-source irpf-2026-in-rfb-2312
 ```
 
 ## Local Eval Workshop
@@ -43,8 +60,9 @@ terminals running while using it. The fake answer provider does not need an API 
 requests also require `OPENAI_API_KEY` in the local `.env` and the explicit confirmation in the
 UI.
 
-The raw HTML is written to `var/object-storage/`. PostgreSQL retains the source,
-content hash, version metadata, and ingestion-run audit record.
+Raw source files are checked into `data/source-snapshots/`; ingested copies and generated artifacts
+are written under ignored `var/`. PostgreSQL retains the source, content hash, version metadata,
+and ingestion-run audit record. See the [snapshot index](data/source-snapshots/README.md).
 
 Run the checks with:
 

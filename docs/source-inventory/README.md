@@ -4,6 +4,10 @@ This directory holds the curated registry of sources that TaxRAG is allowed to r
 
 It is intentionally not a folder of arbitrary downloaded files. Each source must have a reason for inclusion, an official canonical URL, an authority label, and a freshness policy.
 
+The exact originals for the current approved sources are stored in the tracked
+[`data/source-snapshots/`](../../data/source-snapshots/README.md) bundle. Their copies under
+`var/object-storage/` are local runtime objects and remain Git-ignored.
+
 ## Initial Source Families
 
 | Family | Official publisher | Preferred format | Authority label | Role |

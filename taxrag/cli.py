@@ -114,6 +114,11 @@ def main() -> None:
     ingest_parser = subparsers.add_parser("ingest-source", help="Fetch one approved official source")
     # Restrict the command to the registry; a CLI user cannot ingest an arbitrary URL.
     ingest_parser.add_argument("source_key", choices=sorted(APPROVED_SOURCES))
+    ingest_parser.add_argument(
+        "--from-snapshot",
+        action="store_true",
+        help="ingest the bundled hash-verified source file without making an HTTP request",
+    )
     process_parser = subparsers.add_parser(
         "process-source", help="Extract and chunk the newest stored source version"
     )
@@ -177,7 +182,11 @@ def main() -> None:
     if args.command == "ingest-source":
         # A session is scoped to one command so connections are always released.
         with SessionLocal() as session:
-            run = ingest_source(session, APPROVED_SOURCES[args.source_key])
+            run = ingest_source(
+                session,
+                APPROVED_SOURCES[args.source_key],
+                from_snapshot=args.from_snapshot,
+            )
         print(f"Ingestion run {run.id}: {run.outcome}")
     elif args.command == "process-source":
         with SessionLocal() as session:

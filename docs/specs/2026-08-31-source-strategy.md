@@ -29,11 +29,19 @@ Use a curated, versioned source registry with four authority levels:
 
 Prefer official HTML for legal sources. Use PDFs only when an official document is natively published as a PDF. Preserve both the raw artifact and extracted text. Chunks and embeddings are generated from extracted text and can be recreated at any time.
 
+For the current small, public learning corpus, keep exact original source snapshots in the tracked
+`data/source-snapshots/` directory. Record their SHA-256 values and source metadata in the registry
+and inventory. The ingestion worker can load these snapshots offline and copy verified bytes into
+local object storage under ignored `var/`. Databases, extracted text, chunks, embeddings, and run
+artifacts remain generated runtime data and are not tracked. Revisit Git storage before admitting
+large or restricted sources.
+
 ## Content Lifecycle
 
 1. Select: admit a source based on the V1 topic, official origin, and authority level.
 2. Fetch: download or request the canonical official URL on a scheduled job.
-3. Preserve: retain the raw HTML or PDF, final URL, headers when available, and content hash.
+3. Preserve: retain the tracked original HTML or PDF snapshot, final URL, headers when available,
+   and content hash; copy verified bytes to runtime object storage during ingestion.
 4. Extract: convert the artifact into structured text while retaining article, chapter, page, heading, or question identifiers.
 5. Normalize: clean only presentation noise; never silently rewrite legal wording.
 6. Version: compare hashes and metadata with the prior fetch. Keep the old version when a change is detected.
@@ -77,5 +85,6 @@ Prefer official HTML for legal sources. Use PDFs only when an official document 
 
 - A topic-specific source inventory lists the first approved documents and their authority labels.
 - The ingestion prototype can fetch, hash, preserve, and extract each approved format.
+- A clean checkout can ingest the tracked snapshots without fetching the source URLs.
 - Each resulting chunk retains a user-visible citation anchor.
 - The first retrieval evaluation can demonstrate whether the correct source passage is returned.
