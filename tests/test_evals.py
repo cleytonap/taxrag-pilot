@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -27,16 +28,82 @@ from taxrag.extraction import (
 )
 
 FIXTURE_PATH = Path("docs/evals/lexical-retrieval-baseline.jsonl")
+
+
+def _fake_chunk(anchor_key: str, **overrides: object) -> SimpleNamespace:
+    """A retrieved-chunk double with every field the evaluation trace records."""
+    fields = {
+        "chunk_id": f"chunk-{anchor_key}",
+        "anchor_key": anchor_key,
+        "anchor_title": anchor_key,
+        "source_title": "Official source",
+        "source_link": "https://example.test",
+        "chunk_text": "evidence",
+    }
+    return SimpleNamespace(**{**fields, **overrides})
 ANSWER_FIXTURE_PATH = Path("docs/evals/cited-answer-development.jsonl")
 
 
 def test_lexical_retrieval_fixture_has_unique_cases_and_valid_anchor_sets() -> None:
     cases = load_retrieval_eval_cases(FIXTURE_PATH)
 
-    assert len(cases) == 50
+    assert len(cases) == 70
     assert len({case.case_id for case in cases}) == len(cases)
     assert all(case.question and case.acceptable_anchor_keys for case in cases)
     assert all(set(case.preferred_anchor_keys) <= set(case.acceptable_anchor_keys) for case in cases)
+
+
+def test_fixtures_keep_their_edge_case_categories() -> None:
+    """Edge cases are a reviewed coverage property; deleting the last case of a kind must fail."""
+
+    def categories(path: Path) -> set[str]:
+        records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        return {record["edge_case"] for record in records if "edge_case" in record}
+
+    assert categories(FIXTURE_PATH) >= {
+        "typo-no-accents",
+        "keyword-only",
+        "long-noisy",
+        "boundary-value",
+        "cross-lingual",
+        "other-year",
+        "scope-boundary",
+        "stale-source-conflict",
+        "false-premise",
+        "multi-condition",
+    }
+    assert categories(ANSWER_FIXTURE_PATH) >= {
+        "other-year",
+        "future-year",
+        "calendar-vs-exercise",
+        "boundary-value",
+        "personalized-advice",
+        "out-of-scope-tax",
+        "out-of-scope-jurisdiction",
+        "off-domain",
+        "false-premise",
+        "stale-source-conflict",
+        "scope-boundary",
+        "prompt-injection",
+        "cross-lingual",
+        "missing-source",
+    }
+
+
+def test_retrieval_fixture_covers_every_user_relevant_in_rfb_2312_article() -> None:
+    """Coverage is a reviewed property of the suite, so removing a case must not silently drop it.
+
+    Art. 17 (entry into force) is deliberately excluded: no end-user question depends on it.
+    """
+    cases = load_retrieval_eval_cases(FIXTURE_PATH)
+    covered_articles = {
+        int(anchor.split("-")[1])
+        for case in cases
+        for anchor in case.acceptable_anchor_keys
+        if anchor.startswith("art-")
+    }
+
+    assert set(range(1, 17)) - covered_articles == set()
 
 
 def test_retrieval_fixture_requires_all_contract_fields(tmp_path: Path) -> None:
@@ -64,8 +131,8 @@ def test_retrieval_evaluation_tracks_acceptable_and_preferred_ranks(monkeypatch:
         evals,
         "search_chunks",
         lambda _session, _question, limit, **_kwargs: [
-            SimpleNamespace(anchor_key="question-001--p23"),
-            SimpleNamespace(anchor_key="art-2-inciso-i"),
+            _fake_chunk("question-001--p23"),
+            _fake_chunk("art-2-inciso-i"),
         ][:limit],
     )
 
@@ -86,7 +153,7 @@ def test_retrieval_evaluation_forwards_the_selected_strategy(
 
     def fake_search(_session: object, _question: str, limit: int, **kwargs: object) -> list[object]:
         observed.update(kwargs)
-        return [SimpleNamespace(anchor_key="art-2-inciso-i")][:limit]
+        return [_fake_chunk("art-2-inciso-i")][:limit]
 
     monkeypatch.setattr(evals, "search_chunks", fake_search)
     provider = SimpleNamespace(model="test", dimensions=1536)
@@ -105,7 +172,7 @@ def test_answer_fixture_has_reviewable_cases_and_an_abstention_case() -> None:
     """The answer fixture keeps subjective quality criteria visible rather than automating them."""
     cases = load_answer_eval_cases(ANSWER_FIXTURE_PATH)
 
-    assert len(cases) == 20
+    assert len(cases) == 33
     assert len({case.case_id for case in cases}) == len(cases)
     assert any(case.expected_abstain for case in cases)
     assert all(case.human_review_criteria for case in cases)
@@ -262,11 +329,8 @@ def test_answer_evaluation_trace_explains_missing_retrieval_and_rejected_draft(
 ) -> None:
     """A failed development case identifies both retrieval and validation root causes."""
     case = load_answer_eval_cases(ANSWER_FIXTURE_PATH)[0]
-    chunk = SimpleNamespace(
-        chunk_id="available-chunk",
-        anchor_key="unrelated-anchor",
-        anchor_title="Unrelated evidence",
-        source_title="Official source",
+    chunk = _fake_chunk(
+        "unrelated-anchor", chunk_id="available-chunk", anchor_title="Unrelated evidence"
     )
     monkeypatch.setattr("taxrag.answers.search_chunks", lambda *_args, **_kwargs: [chunk])
 

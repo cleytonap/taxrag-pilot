@@ -12,7 +12,11 @@ async function forward(request: NextRequest, context: RouteContext) {
     apiPath === "/api/evals/suites" ||
     apiPath === "/api/evals/artifacts" ||
     apiPath === "/api/evals/debug-answer" ||
+    apiPath === "/api/evals/baselines" ||
+    apiPath === "/api/evals/compare" ||
     /^\/api\/evals\/suites\/[a-z0-9_-]+\/run$/.test(apiPath) ||
+    /^\/api\/evals\/suites\/[a-z0-9_-]+\/jobs$/.test(apiPath) ||
+    /^\/api\/evals\/jobs\/[a-f0-9]+$/.test(apiPath) ||
     /^\/api\/evals\/suites\/[a-z0-9_-]+\/fixture$/.test(apiPath) ||
     /^\/api\/evals\/artifacts\/[a-zA-Z0-9_.-]+$/.test(apiPath);
 

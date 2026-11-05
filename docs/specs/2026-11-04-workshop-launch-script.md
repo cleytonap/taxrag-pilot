@@ -1,5 +1,9 @@
 # Eval Workshop Launch Script
 
+> **Update 2026-11-05:** the launcher started Next.js from the repository root (so it exited with
+> "Couldn't find any pages or app directory"), lacked its execute bit, and aborted when Chrome could
+> not be opened. Fixed in [2026-11-05 workshop/baselines spec](2026-11-05-eval-workshop-baselines-and-edge-cases.md).
+
 Date: 2026-11-04
 Status: Implementing
 

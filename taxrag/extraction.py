@@ -10,7 +10,7 @@ import pymupdf
 from bs4 import BeautifulSoup, Tag
 
 EXTRACTOR_NAME = "source-family-extractors"
-EXTRACTOR_VERSION = "5"
+EXTRACTOR_VERSION = "6"
 
 
 @dataclass(frozen=True)
@@ -259,9 +259,12 @@ def _paragraph_key(label: str) -> str:
     return f"paragrafo-{label.split()[1].rstrip('º')}"
 
 
-# The official PDF uses an em dash. Some valid PDF text extractors expose the same
-# visual separator as a middle dot, so accept both while still requiring a 3-digit line start.
-QUESTION_HEADER = re.compile(r"(?m)^(?P<number>\d{3})\s+[—·]\s+(?P<title>.+)$")
+# The official PDF mostly uses "NNN — Title", but 11 of its 745 headers use a hyphen or
+# en dash, or omit the space after the separator (e.g. "035 —Quais", "107 - Qual", "528—").
+# Missing them silently merged those questions into the preceding question's chunk under the
+# wrong citation anchor. Separators are matched only within one line ([ \t]*, not \s*): a page
+# number followed by a bulleted "- 20%" line must not be mistaken for a question header.
+QUESTION_HEADER = re.compile(r"(?m)^(?P<number>\d{3})[ \t]*[—·–-][ \t]*(?P<title>\S.*)$")
 
 
 def extract_receita_questions_answers_pdf(pdf: bytes) -> ExtractionResult:

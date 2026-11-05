@@ -33,49 +33,65 @@ uv run python -m apps.worker process-source irpf-2026-in-rfb-2312
 
 ## Local Eval Workshop
 
-The Eval Workshop has two application servers: FastAPI serves the API, and Next.js serves the
-browser UI. Start the database first because diagnostic questions query the indexed source data:
+The Eval Workshop is a local web UI for managing the eval suites. You can browse and edit cases,
+run a suite with any retrieval strategy, inspect per-case evidence, save a run as a baseline, and
+compare later runs against it. It has two servers: FastAPI (API, port 8000) and Next.js (UI,
+port 3000), backed by PostgreSQL in Docker.
 
-For a one-command setup on macOS, install Docker Desktop, `uv`, `pnpm`, and Google Chrome, then run
-this from the repository root:
+**Prerequisites:** Docker Desktop (running), [`uv`](https://docs.astral.sh/uv/), `pnpm`, and
+`curl`. Then, from the repository root:
 
 ```bash
-./scripts/run-workshop.sh
+bash scripts/run-workshop.sh                    # lexical strategies; no OpenAI calls
+bash scripts/run-workshop.sh --with-embeddings  # also enables semantic/hybrid (OPENAI_API_KEY in .env)
 ```
 
-The script syncs locked dependencies, starts PostgreSQL, applies migrations, loads and processes the
-bundled official snapshots, starts the API and web UI, waits until both respond, and opens Chrome at
-<http://127.0.0.1:3000>. It is safe to rerun: unchanged snapshots are not reprocessed. Press Ctrl+C
-in that terminal to stop app servers launched by the script; PostgreSQL stays running and keeps its
-local data. Logs are written under `var/logs/eval-workshop/`.
+The script syncs dependencies, starts PostgreSQL, applies migrations, loads and processes the
+bundled official snapshots, optionally embeds the corpus, then starts both servers and opens
+<http://127.0.0.1:3000>. Open that URL yourself if no browser window appears. Keep the terminal
+open: Ctrl+C stops the app servers, while PostgreSQL keeps running with its data. The script is safe
+to rerun. On first run it creates `.env` from `.env.example`. Logs: `var/logs/eval-workshop/`.
 
-The launcher requires ports 8000 and 3000 to be free so it can track and stop both app servers.
-If a server is already running there, stop it in its original terminal and rerun the launcher. To
-start services manually and see the commands individually, use the workflow below.
+Using it:
+
+- **Suites & cases:** pick a suite and a strategy, then press **Run suite**. Runs happen in the
+  background with a live progress counter (a lexical run takes about 40 s, an OpenAI answer run a
+  few minutes). Semantic, hybrid and OpenAI runs require ticking the cost confirmation.
+- **Run archive:** every run is saved to `var/eval-runs/` (local, gitignored). Open a run to see its
+  metrics and per-case results (filter to failures), **Save as baseline** (copied to the
+  Git-tracked `docs/evals/baselines/`), or **Compare with baseline** to see regressed and improved
+  cases.
+- **Question lab:** try one question, inspect the retrieved chunks, and add it to a suite.
+
+The same operations are available without the UI:
+
+```bash
+uv run python -m apps.worker run-suite retrieval --strategy lexical            # saves a run
+uv run python -m apps.worker run-suite retrieval --strategy semantic --confirm-paid --baseline v0
+uv run python -m apps.worker compare-runs v0_retrieval_semantic.json <run-file>.json
+```
+
+See [docs/evals/baselines/README.md](docs/evals/baselines/README.md) for the baseline protocol.
+
+Troubleshooting:
+
+| Symptom | Fix |
+| --- | --- |
+| `permission denied: ./scripts/run-workshop.sh` | Run it as `bash scripts/run-workshop.sh` (or `chmod +x` it). |
+| "Docker is installed but not running" | Start Docker Desktop and wait until it reports running. |
+| "A TaxRAG API is already using port 8000" (or 3000) | Stop the earlier server (Ctrl+C in its terminal, or `lsof -ti :8000 \| xargs kill`). |
+| "Web UI startup failed" | Read `var/logs/eval-workshop/web.log`; run `pnpm --dir apps/web install` once manually. |
+| Semantic run fails with "needs embeddings for every chunk" | Rerun the launcher with `--with-embeddings` (requires `OPENAI_API_KEY`). |
+| pnpm refuses to switch to the pinned version | Install the pinned pnpm (`corepack enable && corepack prepare pnpm@11.24.0 --activate`). |
+
+To start the services manually instead:
 
 ```bash
 docker compose up -d
 uv run alembic upgrade head
+uv run uvicorn apps.api.main:app --reload   # terminal 1; check http://127.0.0.1:8000/health
+pnpm --dir apps/web dev                      # terminal 2; open http://localhost:3000
 ```
-
-In one terminal, start the API and leave it running:
-
-```bash
-uv run uvicorn apps.api.main:app --reload
-```
-
-Confirm the API responds at <http://127.0.0.1:8000/health>. In a second terminal, start the web
-UI:
-
-```bash
-pnpm --dir apps/web dev
-```
-
-Open <http://localhost:3000>. The web server forwards the UI's API requests to
-`http://127.0.0.1:8000`, so the browser does not need direct cross-origin access. Keep both
-terminals running while using it. The fake answer provider does not need an API key. OpenAI
-requests also require `OPENAI_API_KEY` in the local `.env` and the explicit confirmation in the
-UI.
 
 Raw source files are checked into `data/source-snapshots/`; ingested copies and generated artifacts
 are written under ignored `var/`. PostgreSQL retains the source, content hash, version metadata,

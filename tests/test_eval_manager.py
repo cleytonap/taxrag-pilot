@@ -24,6 +24,7 @@ def test_list_and_get_artifact_only_exposes_supported_files(
     (tmp_path / "run.txt").write_text("diagnostic", encoding="utf-8")
     (tmp_path / "secret.env").write_text("do-not-show", encoding="utf-8")
     monkeypatch.setattr(eval_manager, "ARTIFACTS_DIRECTORY", tmp_path)
+    monkeypatch.setattr(eval_manager, "BASELINES_DIRECTORY", tmp_path / "no-baselines")
 
     assert [artifact["name"] for artifact in eval_manager.list_artifacts()] == ["run.txt"]
     assert eval_manager.get_artifact("run.txt") == {"name": "run.txt", "content": "diagnostic"}

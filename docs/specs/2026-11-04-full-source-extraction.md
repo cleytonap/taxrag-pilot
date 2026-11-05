@@ -1,5 +1,9 @@
 # Full Source Extraction — IN RFB 2.312 and P&R 2026
 
+> **Update 2026-11-05:** the 734-section count was an extraction bug: 11 question headers use a
+> hyphen or en dash, or omit a space. Extractor v6 yields all 745 questions in sequence. See
+> [2026-11-05 retrieval eval audit](2026-11-05-retrieval-eval-coverage-and-label-audit.md).
+
 Date: 2026-11-04
 Status: Implementing
 

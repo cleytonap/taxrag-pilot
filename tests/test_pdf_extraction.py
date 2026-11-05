@@ -38,28 +38,23 @@ def test_pdf_extraction_preserves_question_boundaries_and_pages(tmp_path: Path) 
     assert result.sections[-1].page_end == 2
 
 
-def test_official_pdf_snapshot_extracts_every_detected_question_header() -> None:
-    """The full source remains covered through its last numbered Q&A entry."""
+def test_official_pdf_snapshot_extracts_every_numbered_question_in_order() -> None:
+    """Every Q&A entry gets its own anchor, including headers with irregular separators."""
     source = next(Path("data/source-snapshots/irpf-2026-perguntas-respostas").rglob("*.pdf"))
     result = extract_receita_questions_answers_pdf(source.read_bytes())
 
-    assert len(result.sections) == 734
-    assert result.sections[0].anchor_key == "question-001--p23"
-    assert result.sections[-1].anchor_key == "question-745--p339"
-    extracted_numbers = {
+    numbers = [
         int(section.anchor_key.split("--", maxsplit=1)[0].removeprefix("question-"))
         for section in result.sections
-    }
-    assert set(range(1, 746)) - extracted_numbers == {
-        35,
-        107,
-        341,
-        466,
-        504,
-        528,
-        584,
-        603,
-        634,
-        644,
-        645,
-    }
+    ]
+    # Strict sequence: a missed header would leave a gap and merge two answers under one
+    # citation; a false positive (e.g. a page number) would break the ordering.
+    assert numbers == list(range(1, 746))
+    assert result.sections[0].anchor_key == "question-001--p23"
+    assert result.sections[-1].anchor_key == "question-745--p339"
+    by_key = {section.anchor_key: section for section in result.sections}
+    # Formerly merged into the previous question ("035 —Quais", "107 - Qual", "341 – Filho").
+    assert by_key["question-035--p35"].display_title.startswith("Question 035: Quais são os meios")
+    assert by_key["question-107--p60"].display_title.startswith("Question 107: Qual é o prazo")
+    assert "Declaração Final de Espólio deve ser apresentada" not in by_key["question-106--p59"].text
+    assert by_key["question-341--p176"].display_title.startswith("Question 341: Filho(a)")

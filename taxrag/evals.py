@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -161,6 +161,9 @@ def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
     return cases
 
 
+ANSWER_CASE_METADATA_KEYS = frozenset({"topic", "edge_case", "label_notes"})
+
+
 def load_answer_eval_cases(path: Path) -> list[AnswerEvalCase]:
     """Load a human-authored JSONL answer fixture with a deliberately narrow contract."""
     cases = []
@@ -175,7 +178,9 @@ def load_answer_eval_cases(path: Path) -> list[AnswerEvalCase]:
             "expected_abstain",
             "human_review_criteria",
         }
-        if set(record) != required:
+        # Review-only metadata is allowed, but unknown keys still fail so typos cannot silently
+        # drop a scored field (e.g. "expected_abstian").
+        if not required <= set(record) or set(record) - required - ANSWER_CASE_METADATA_KEYS:
             raise ValueError(
                 f"Answer evaluation fixture line {line_number} does not match the required contract"
             )
@@ -236,10 +241,13 @@ def run_retrieval_evals(
     cases: list[RetrievalEvalCase],
     strategy: RetrievalStrategy = "lexical",
     embedding_provider: EmbeddingProvider | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[RetrievalEvalResult]:
     """Measure one explicit retrieval strategy against acceptable and preferred anchors."""
     results = []
     for case in cases:
+        if on_progress:
+            on_progress(len(results), len(cases))
         matches = search_chunks(
             session, case.question, limit=3, strategy=strategy, embedding_provider=embedding_provider
         )
@@ -276,10 +284,13 @@ def run_answer_evals(
     provider: AnswerProvider,
     strategy: RetrievalStrategy = "semantic",
     embedding_provider: EmbeddingProvider | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[AnswerEvalResult]:
     """Run answer cases and retain local trace data needed to diagnose failures."""
     results = []
     for case in cases:
+        if on_progress:
+            on_progress(len(results), len(cases))
         retrieved_evidence: tuple[RetrievedEvidence, ...] = ()
         validation_error: str | None = None
         rejected_draft: AnswerDraft | None = None

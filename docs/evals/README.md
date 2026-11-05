@@ -25,6 +25,110 @@ Re-run development retrieval evaluations whenever the source corpus changes. A s
 can reveal both genuine ranking regressions and overly narrow exact-anchor expectations; record
 and classify each change rather than changing labels merely to restore a passing score.
 
+### Retrieval Labelling Rules
+
+Full rationale: [2026-11-05 audit spec](../specs/2026-11-05-retrieval-eval-coverage-and-label-audit.md).
+Coverage matrix: [retrieval-coverage.md](retrieval-coverage.md).
+
+- **Acceptable** = a chunk that, read alone, lets a user verify a correct answer to the question *as
+  asked* (same year, same kind of person, same context). Exclude chunks that state the rule only
+  for another context, and chunks whose figure for the asked fact is stale. The official P&R has
+  some: Q088 gives R$ 300.000,00 where the IN says R$ 800.000,00.
+- **Complete** = every such chunk in the corpus is listed. Missing one turns a correct retrieval into
+  a reported failure. Establish completeness by pooled review (below), not by memory.
+- **Preferred** is declared only when two or more acceptable anchors compete and the source policy
+  decides. Otherwise leave it empty.
+- **Metadata** on every case: `topic`, `covers` (precise legal/P&R reference, e.g. `IN art. 11, §3, I`),
+  `style` (`source-wording` | `paraphrase` | `scenario`), optional `edge_case`, and `label_notes`
+  (why these anchors, what was rejected and why). Answer cases may carry `topic`, `edge_case` and
+  `label_notes`; any other unknown key is rejected so typos in scored fields fail loudly. The loader ignores these fields, so cases added from the Workshop UI must gain
+  them before merge.
+- **IDs** are never reused. Label corrections keep the ID. A changed question is a new case,
+  except for an outright defect fix, which is recorded in a spec.
+
+### How To Review The Retrieval Suite
+
+Do this after any fixture edit, extractor change, or source update. Work in topic batches of
+10–15 cases so each source section stays in your head.
+
+1. **Rebuild and run.** Reprocess the sources and regenerate embeddings (an extractor version bump
+   deletes them for every source), then run all strategies. Each run is saved to `var/eval-runs/`
+   and appears in the Workshop's Run archive:
+
+   ```bash
+   bash scripts/run-workshop.sh --with-embeddings   # or process-source/embed-source manually
+   for st in lexical lexical_authority semantic hybrid_rrf; do
+     uv run python -m apps.worker run-suite retrieval --strategy $st --confirm-paid
+   done
+   ```
+
+2. **Check each case's labels (accuracy).** Open every acceptable anchor through its source link
+   and ask:
+   - Does this chunk alone answer *this* question?
+   - Is the year right: ano-calendário 2025, exercício 2026?
+   - Is the figure current (the IN wins over the P&R)?
+   - Is the `covers` reference the exact provision?
+   - If a preferred anchor is set, does the 2026-09-08 policy justify it?
+   - Is the question realistic, unambiguous, and not simply a copy of the answer's wording?
+3. **Check each case's labels (completeness).** Pool unlabelled candidates from several strategies
+   and read each one. Add it, or record in `label_notes` why it was rejected:
+
+   ```bash
+   uv run python scripts/pool-retrieval-candidates.py --strategies lexical semantic hybrid_rrf --k 5
+   ```
+
+4. **Triage every failure** before touching anything. Classify it as:
+   - *retrieval miss*: a valid label was not retrieved. Keep the case and record it.
+   - *label too narrow*: add the anchor, with a reason.
+   - *question ambiguous or defective*: fix it or retire it, with a reason.
+   - *extraction defect*: fix the extractor in its own spec.
+
+   Only the last three justify a fixture edit. Never edit labels because a score went down.
+5. **Coverage.** Regenerate `retrieval-coverage.md` and confirm that every user-relevant IN article
+   is still covered. `test_retrieval_fixture_covers_every_user_relevant_in_rfb_2312_article`
+   enforces Arts. 1–16. Regenerate the report with
+   `uv run python scripts/retrieval-coverage-report.py`.
+6. **Second reviewer.** Have a second person independently label a random ~20% sample, blind to the
+   existing labels. Disagreements show where the rules above are unclear. Someone other than the
+   suite's author should write the holdout set.
+
+### Edge Cases
+
+A RAG eval suite needs more than "normal" questions. Real users misspell words, ask about the wrong
+year, bundle several facts into one question, ask things the corpus cannot answer, and
+occasionally try to subvert the assistant. Each edge case is tagged with `edge_case` so runs can be
+sliced by category, and `test_fixtures_keep_their_edge_case_categories` stops a category from
+silently disappearing.
+
+Where an edge case lives depends on what "correct" means for it:
+
+- **Retrieval suite (answerable, hard form).** A correct chunk exists, so recall can be scored.
+  Categories: `typo-no-accents`, `keyword-only`, `long-noisy`, `boundary-value`,
+  `cross-lingual`, `other-year` (the guidance table maps each exercise to its norm),
+  `scope-boundary`, `stale-source-conflict` (the official P&R contains an outdated figure),
+  `false-premise`, `multi-condition` (the decisive criterion must be retrieved, not just a
+  related one).
+- **Answer suite (refuse, narrow, or correct).** Either no correct chunk exists, or the difficulty
+  is in how the answer behaves. Expected abstention: `other-year`, `future-year`,
+  `out-of-scope-tax`, `out-of-scope-jurisdiction`, `off-domain`, `prompt-injection`,
+  `missing-source` (an IRPF topic absent from the corpus, which tests hallucination from model
+  memory). Expected grounded answer: `calendar-vs-exercise`, `boundary-value`,
+  `personalized-advice` (scope-limited, no computed amount), `false-premise` (correct the
+  premise), `stale-source-conflict` (use the IN figure, never the stale P&R one), `scope-boundary`,
+  `cross-lingual`, `arithmetic`, `below-threshold`.
+
+Known contract limitation: answer cases are scored as *answer* or *abstain* only. A genuinely
+ambiguous question (e.g. "IR 2025", which may mean exercise 2025 or calendar year 2025) should
+ideally trigger a clarification question, which the binary contract cannot score. Such cases are
+excluded until the contract gains an explicit `clarify` outcome. Retrieval also has no "no-answer"
+metric yet. Once retrieval gets a confidence threshold, out-of-scope questions should be added
+there too, with the expectation that nothing is retrieved above the threshold.
+
+### Baselines
+
+Record a baseline before optimising, then compare every change against it. The protocol, the
+current V0 status and the comparison commands are in [baselines/README.md](baselines/README.md).
+
 ### Holdout Set
 
 Create and freeze the V1 holdout set after all intended V1 source families are ingested and chunked: Receita guidance HTML, the applicable normative instruction, and the official IRPF questions-and-answers PDF.

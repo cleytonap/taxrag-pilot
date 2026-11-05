@@ -18,6 +18,7 @@ from taxrag.answers import (
 from taxrag.config import settings
 from taxrag.database import SessionLocal
 from taxrag.embeddings import configured_embedding_provider, embed_latest_source_version
+from taxrag.eval_manager import compare_artifacts, promote_to_baseline, run_suite
 from taxrag.evals import (
     AnswerEvalResult,
     load_answer_eval_cases,
@@ -167,10 +168,37 @@ def main() -> None:
             "use only for local debugging of non-sensitive questions"
         ),
     )
+    run_parser = subparsers.add_parser(
+        "run-suite",
+        help="Run a suite exactly like the Eval Workshop and save a JSON artifact in var/eval-runs/",
+    )
+    run_parser.add_argument("suite", choices=("retrieval", "answer"))
+    run_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="lexical")
+    run_parser.add_argument("--provider", choices=("fake", "openai"), default="fake")
+    run_parser.add_argument(
+        "--confirm-paid",
+        action="store_true",
+        help="required for semantic/hybrid retrieval or the OpenAI provider (billable API calls)",
+    )
+    run_parser.add_argument(
+        "--baseline",
+        metavar="LABEL",
+        help="also promote the saved run to docs/evals/baselines/ under this label (e.g. v0)",
+    )
+    promote_parser = subparsers.add_parser(
+        "promote-baseline", help="Copy a saved run artifact to the Git-tracked baselines directory"
+    )
+    promote_parser.add_argument("artifact_name")
+    promote_parser.add_argument("--label", required=True)
+    compare_parser = subparsers.add_parser(
+        "compare-runs", help="Compare a candidate run artifact against a baseline artifact"
+    )
+    compare_parser.add_argument("baseline")
+    compare_parser.add_argument("candidate")
     args = parser.parse_args()
 
     requires_embeddings = args.command == "embed-source" or (
-        args.command in {"search", "eval-retrieval", "eval-answers", "answer"}
+        args.command in {"search", "eval-retrieval", "eval-answers", "answer", "run-suite"}
         and args.strategy in {"semantic", "hybrid_rrf"}
     )
     if requires_embeddings and not settings.openai_api_key:
@@ -179,6 +207,16 @@ def main() -> None:
             "Set it in the command environment before using semantic retrieval."
         )
 
+    try:
+        _dispatch(args)
+    except (FileExistsError, FileNotFoundError, PermissionError, RuntimeError, ValueError) as error:
+        # Expected operator errors (missing embeddings, immutable baseline, unknown artifact)
+        # are shown as one actionable line instead of a traceback.
+        parser.exit(2, f"Error: {type(error).__name__}: {error}\n")
+
+
+def _dispatch(args: argparse.Namespace) -> None:
+    """Execute one parsed worker command."""
     if args.command == "ingest-source":
         # A session is scoped to one command so connections are always released.
         with SessionLocal() as session:
@@ -283,6 +321,29 @@ def main() -> None:
             f"Answer structural checks ({args.strategy}, {args.provider}): "
             f"{passed}/{len(results)} passed. Human review remains required for every case."
         )
+    elif args.command == "run-suite":
+        with SessionLocal() as session:
+            outcome = run_suite(
+                session,
+                suite_id=args.suite,
+                strategy=args.strategy,
+                provider_id=args.provider,
+                confirm_paid_request=args.confirm_paid,
+                on_progress=lambda done, total: print(
+                    f"\r  {done}/{total} cases", end="", file=sys.stderr, flush=True
+                ),
+            )
+        print(file=sys.stderr)
+        print(f"Saved var/eval-runs/{outcome['artifact_name']}")
+        print(json.dumps(outcome["summary"], indent=2))
+        if args.baseline:
+            promoted = promote_to_baseline(outcome["artifact_name"], args.baseline)
+            print(f"Baseline saved to {promoted['path']} (commit it to share and keep it)")
+    elif args.command == "promote-baseline":
+        promoted = promote_to_baseline(args.artifact_name, args.label)
+        print(f"Baseline saved to {promoted['path']} (commit it to share and keep it)")
+    elif args.command == "compare-runs":
+        print("\n".join(_format_comparison(compare_artifacts(args.baseline, args.candidate))))
     elif args.command == "answer":
         provider = DeterministicAnswerProvider() if args.provider == "fake" else configured_answer_provider()
         debug_handler = _print_answer_validation_debug if args.debug else None
@@ -300,6 +361,35 @@ def main() -> None:
                 on_validation_failure=debug_handler,
             )
         print(json.dumps(answer.to_dict(), ensure_ascii=False, indent=2))
+
+
+def _format_comparison(comparison: dict[str, object]) -> list[str]:
+    """Render a baseline/candidate comparison with regressions listed first."""
+    lines = [
+        f"Baseline:  {comparison['baseline']}",
+        f"Candidate: {comparison['candidate']}",
+        f"Strategies: {' -> '.join(comparison['strategies'])}",  # type: ignore[arg-type]
+    ]
+    lines += [f"WARNING: {warning}" for warning in comparison["warnings"]]  # type: ignore[union-attr]
+    lines.append("Metrics:")
+    for name, values in comparison["metrics"].items():  # type: ignore[union-attr]
+        lines.append(
+            f"  {name}: {values['baseline']:.3g} -> {values['candidate']:.3g} "
+            f"({values['delta']:+.3g})"
+        )
+    changes = comparison["changes"]
+    lines.append(f"Case changes: {len(changes)}")  # type: ignore[arg-type]
+    for change in changes:  # type: ignore[union-attr]
+        detail = (
+            f"rank {change['baseline_rank']} -> {change['candidate_rank']}"
+            if change["baseline_outcome"] is None
+            else f"outcome {change['baseline_outcome']} -> {change['candidate_outcome']}"
+        )
+        lines.append(f"  {change['change'].upper():12} {change['case_id']}: {detail}")
+    for label in ("added_case_ids", "removed_case_ids"):
+        if comparison[label]:
+            lines.append(f"{label.replace('_', ' ')}: {', '.join(comparison[label])}")  # type: ignore[arg-type]
+    return lines
 
 
 def _print_answer_validation_debug(

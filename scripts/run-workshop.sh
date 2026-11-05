@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 
-# Prepare and run the local Eval Workshop, then open it in Google Chrome.
+# Prepare and run the local Eval Workshop, then open it in a browser.
+#
+# Usage (from the repository root):
+#   bash scripts/run-workshop.sh                    # lexical strategies only, no OpenAI calls
+#   bash scripts/run-workshop.sh --with-embeddings  # also embed the corpus (needs OPENAI_API_KEY;
+#                                                   # ~790 chunks, about US$0.01) for semantic/hybrid
 set -Eeuo pipefail
+
+WITH_EMBEDDINGS=0
+for argument in "$@"; do
+  case "$argument" in
+    --with-embeddings) WITH_EMBEDDINGS=1 ;;
+    -h|--help) sed -n '3,8p' "$0"; exit 0 ;;
+    *) printf 'Unknown option: %s (see --help)\n' "$argument" >&2; exit 2 ;;
+  esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -82,12 +96,26 @@ wait_for_url() {
   return 1
 }
 
-for command_name in uv pnpm docker curl open; do
+open_browser() {
+  # Opening a browser is a convenience: never let it stop servers that are already healthy.
+  if [[ "$(uname)" == "Darwin" ]]; then
+    open -a "Google Chrome" "$1" 2>/dev/null || open "$1" 2>/dev/null || true
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$1" >/dev/null 2>&1 || true
+  fi
+}
+
+for command_name in uv pnpm docker curl; do
   require_command "$command_name"
 done
+docker info >/dev/null 2>&1 || fail "Docker is installed but not running. Start Docker Desktop, wait until it says 'running', then rerun this script."
 
 cd "$PROJECT_ROOT"
 mkdir -p "$LOG_DIR"
+if [[ ! -f .env ]]; then
+  cp .env.example .env
+  printf 'Created .env from .env.example. Add OPENAI_API_KEY there to enable semantic/OpenAI runs.\n'
+fi
 
 if curl --fail --silent --output /dev/null "$API_URL/health"; then
   fail "A TaxRAG API is already using port 8000. Stop it in its original terminal, then rerun this script."
@@ -129,6 +157,25 @@ for source_key in "${source_keys[@]}"; do
   uv run python -m apps.worker process-source "$source_key"
 done
 
+# Semantic and hybrid retrieval need one vector per chunk. Processing a changed extractor
+# deletes old vectors, so embeddings are (re)created here only when explicitly requested.
+has_openai_key="$(uv run python -c 'from taxrag.config import settings; print("yes" if settings.openai_api_key else "")')"
+if [[ "$WITH_EMBEDDINGS" == "1" ]]; then
+  [[ -n "$has_openai_key" ]] || fail "--with-embeddings needs OPENAI_API_KEY in .env or the environment."
+  for source_key in "${source_keys[@]}"; do
+    printf 'Embedding missing chunks (OpenAI, billable): %s\n' "$source_key"
+    uv run python -m apps.worker embed-source "$source_key"
+  done
+fi
+embedding_status="$(uv run python -c '
+from taxrag.config import settings
+from taxrag.database import SessionLocal
+from taxrag.embeddings import embedding_coverage
+with SessionLocal() as session:
+    done, total = embedding_coverage(session, settings.embedding_model, settings.embedding_dimensions)
+print(f"{done}/{total}")
+')"
+
 printf 'Starting FastAPI...\n'
 : > "$API_LOG"
 "$PROJECT_ROOT/.venv/bin/uvicorn" apps.api.main:app --host 127.0.0.1 --port 8000 >"$API_LOG" 2>&1 &
@@ -137,13 +184,20 @@ wait_for_url "TaxRAG API" "$API_URL/health" "$API_LOG" "$API_PID" || fail "API s
 
 printf 'Starting Next.js...\n'
 : > "$WEB_LOG"
-"$PROJECT_ROOT/apps/web/node_modules/.bin/next" dev --hostname 127.0.0.1 --port 3000 >"$WEB_LOG" 2>&1 &
+# Pass the app directory explicitly: started from the repository root, Next.js would look for
+# `app/` there and exit with "Couldn't find any pages or app directory".
+"$PROJECT_ROOT/apps/web/node_modules/.bin/next" dev "$PROJECT_ROOT/apps/web" --hostname 127.0.0.1 --port 3000 >"$WEB_LOG" 2>&1 &
 WEB_PID=$!
 wait_for_url "Eval Workshop" "$WORKSHOP_URL" "$WEB_LOG" "$WEB_PID" || fail "Web UI startup failed."
 
-printf 'Opening Google Chrome at %s\n' "$WORKSHOP_URL"
-open -a "Google Chrome" "$WORKSHOP_URL" || fail "Google Chrome could not be opened."
-printf 'Eval Workshop is ready. Press Ctrl+C here to stop the app servers.\n'
+open_browser "$WORKSHOP_URL"
+printf '\nEval Workshop is ready at %s (open it manually if no browser window appeared).\n' "$WORKSHOP_URL"
+printf 'Chunk embeddings: %s.' "$embedding_status"
+if [[ "${embedding_status%%/*}" != "${embedding_status##*/}" ]]; then
+  printf ' Semantic/hybrid runs are unavailable until you rerun with --with-embeddings.'
+fi
+printf '\nRun results are saved in var/eval-runs/; baselines in docs/evals/baselines/.\n'
+printf 'Press Ctrl+C here to stop the app servers (PostgreSQL keeps running).\n'
 
 while { [[ -z "$API_PID" ]] || kill -0 "$API_PID" 2>/dev/null; } \
   && { [[ -z "$WEB_PID" ]] || kill -0 "$WEB_PID" 2>/dev/null; }; do

@@ -9,13 +9,17 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from taxrag.database import SessionLocal
 from taxrag.eval_manager import (
+    compare_artifacts,
     debug_answer,
     get_artifact,
     get_fixture,
+    get_run_job,
     list_artifacts,
     list_suites,
+    promote_to_baseline,
     run_suite,
     save_fixture,
+    start_suite_run,
 )
 
 app = FastAPI(title="TaxRAG API", version="0.1.0")
@@ -89,8 +93,70 @@ def run_eval_suite(suite_id: str, request: SuiteRunRequest) -> dict[str, object]
             raise HTTPException(status_code=403, detail=str(error)) from error
         except (TypeError, ValueError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
         except SQLAlchemyError as error:
             raise HTTPException(status_code=503, detail="The local database is unavailable") from error
+
+
+@app.post("/api/evals/suites/{suite_id}/jobs")
+def start_eval_suite_job(suite_id: str, request: SuiteRunRequest) -> dict[str, object]:
+    """Start a suite run in the background; the UI polls the job instead of holding a request."""
+    try:
+        return start_suite_run(
+            suite_id=suite_id,
+            strategy=request.strategy,
+            provider_id=request.provider,
+            confirm_paid_request=request.confirm_paid_request,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.get("/api/evals/jobs/{job_id}")
+def eval_suite_job(job_id: str) -> dict[str, object]:
+    """Return progress, and the result once finished, for one background suite run."""
+    try:
+        return get_run_job(job_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+class BaselineRequest(BaseModel):
+    """Promote one saved run artifact to a named, Git-tracked baseline."""
+
+    artifact_name: str = Field(min_length=1)
+    label: str = Field(min_length=1, max_length=40)
+
+
+@app.post("/api/evals/baselines")
+def promote_eval_baseline(request: BaselineRequest) -> dict[str, object]:
+    """Copy a run into docs/evals/baselines/ so later changes can be compared against it."""
+    try:
+        return promote_to_baseline(request.artifact_name, request.label)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=f"Run artifact not found: {error}") from error
+    except FileExistsError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/evals/compare")
+def compare_eval_runs(baseline: str, candidate: str) -> dict[str, object]:
+    """Compare a candidate run with a baseline: metric deltas and per-case changes."""
+    try:
+        return compare_artifacts(baseline, candidate)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=f"Artifact not found: {error}") from error
+    except (KeyError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.put("/api/evals/suites/{suite_id}/fixture")

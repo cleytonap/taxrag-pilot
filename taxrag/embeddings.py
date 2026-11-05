@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from openai import OpenAI
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from taxrag.config import settings
@@ -99,15 +99,81 @@ def embed_latest_source_version(
     if not missing_chunks:
         return EmbeddingResult(str(source_version.id), "unchanged", 0)
 
-    vectors = provider.embed_texts([chunk.search_text for chunk in missing_chunks])
-    for chunk, vector in zip(missing_chunks, vectors, strict=True):
-        session.add(
-            ChunkEmbedding(
-                chunk_id=chunk.id,
-                model=provider.model,
-                dimensions=provider.dimensions,
-                embedding=vector,
+    # One request per bounded batch: the embeddings API rejects requests above 2,048 inputs or
+    # ~300k total tokens, and the full P&R source alone is ~1.1M characters. Committing per batch
+    # keeps the command resumable, because only chunks without a vector are embedded on rerun.
+    for batch in _embedding_batches(missing_chunks):
+        vectors = provider.embed_texts([chunk.search_text for chunk in batch])
+        for chunk, vector in zip(batch, vectors, strict=True):
+            session.add(
+                ChunkEmbedding(
+                    chunk_id=chunk.id,
+                    model=provider.model,
+                    dimensions=provider.dimensions,
+                    embedding=vector,
+                )
+            )
+        session.commit()
+    return EmbeddingResult(str(source_version.id), "created", len(missing_chunks))
+
+
+EMBEDDING_BATCH_MAX_INPUTS = 64
+# Conservative character budget (~40-60k tokens for Portuguese) far below the request token cap.
+EMBEDDING_BATCH_MAX_CHARACTERS = 150_000
+
+
+def _embedding_batches(chunks: list[Chunk]) -> list[list[Chunk]]:
+    """Split chunks into API-safe batches bounded by input count and total characters."""
+    batches: list[list[Chunk]] = []
+    current: list[Chunk] = []
+    current_characters = 0
+    for chunk in chunks:
+        size = len(chunk.search_text)
+        if current and (
+            len(current) >= EMBEDDING_BATCH_MAX_INPUTS
+            or current_characters + size > EMBEDDING_BATCH_MAX_CHARACTERS
+        ):
+            batches.append(current)
+            current, current_characters = [], 0
+        current.append(chunk)
+        current_characters += size
+    if current:
+        batches.append(current)
+    return batches
+
+
+def embedding_coverage(session: Session, model: str, dimensions: int) -> tuple[int, int]:
+    """Return (embedded, total) chunk counts for active processed sources and one model.
+
+    Semantic and hybrid evaluations must not run on partial vectors: missing embeddings silently
+    shrink the searchable corpus and would record a misleadingly low baseline.
+    """
+    active_chunk_ids = (
+        select(Chunk.id)
+        .join(SourceVersion, SourceVersion.id == Chunk.source_version_id)
+        .join(Source, Source.id == SourceVersion.source_id)
+        .where(Source.is_active.is_(True), SourceVersion.processing_status == "processed")
+    )
+    total = session.scalar(select(func.count()).select_from(active_chunk_ids.subquery())) or 0
+    embedded = (
+        session.scalar(
+            select(func.count(ChunkEmbedding.chunk_id)).where(
+                ChunkEmbedding.chunk_id.in_(active_chunk_ids),
+                ChunkEmbedding.model == model,
+                ChunkEmbedding.dimensions == dimensions,
             )
         )
-    session.commit()
-    return EmbeddingResult(str(source_version.id), "created", len(missing_chunks))
+        or 0
+    )
+    return embedded, total
+
+
+def require_complete_embeddings(session: Session, model: str, dimensions: int) -> None:
+    """Fail fast with an actionable message when the corpus is not fully embedded."""
+    embedded, total = embedding_coverage(session, model, dimensions)
+    if total == 0 or embedded < total:
+        raise RuntimeError(
+            f"Semantic retrieval needs embeddings for every chunk, but only {embedded} of {total} "
+            f"chunks have {model} vectors. Run `uv run python -m apps.worker embed-source <source>` "
+            "for each source (or rerun scripts/run-workshop.sh with OPENAI_API_KEY set)."
+        )

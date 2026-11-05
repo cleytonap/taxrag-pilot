@@ -81,6 +81,9 @@ deductions.
 
 ## Snapshot Coverage Note
 
+> **Update 2026-11-05:** resolved. Extractor v6 yields all 745 questions; the suite was audited and
+> revised to 60 cases. See [2026-11-05 retrieval eval audit](2026-11-05-retrieval-eval-coverage-and-label-audit.md).
+
 The Q&A PDF's highest numbered entry is 745, while the current extractor yields 734 sections. The
 evaluation anchors are validated against actual extraction output so a reference cannot silently
 target a nonexistent chunk. This suite covers the product's selected cross-topic benchmark; it does
