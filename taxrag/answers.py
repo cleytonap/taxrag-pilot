@@ -62,6 +62,7 @@ class Citation:
     canonical_url: str
     authority_level: str
     excerpt: str
+    source_link: str | None = None
 
     def to_dict(self) -> dict[str, str]:
         """Serialize the citation without exposing mutable internal objects."""
@@ -71,6 +72,7 @@ class Citation:
             "anchor_title": self.anchor_title,
             "source_title": self.source_title,
             "canonical_url": self.canonical_url,
+            "source_link": self.source_link or self.canonical_url,
             "authority_level": self.authority_level,
             "excerpt": self.excerpt,
         }
@@ -321,6 +323,7 @@ def validate_answer_draft(
                     anchor_title=chunk.anchor_title,
                     source_title=chunk.source_title,
                     canonical_url=chunk.canonical_url,
+                    source_link=chunk.source_link,
                     authority_level=chunk.authority_level,
                     excerpt=chunk.chunk_text,
                 )

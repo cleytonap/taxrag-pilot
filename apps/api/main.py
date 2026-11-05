@@ -14,6 +14,7 @@ from taxrag.eval_manager import (
     get_fixture,
     list_artifacts,
     list_suites,
+    run_suite,
     save_fixture,
 )
 
@@ -41,6 +42,14 @@ class DebugAnswerRequest(BaseModel):
     confirm_paid_request: bool = False
 
 
+class SuiteRunRequest(BaseModel):
+    """Local suite run configuration selected in the Eval Workshop."""
+
+    strategy: Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf"] = "lexical"
+    provider: Literal["fake", "openai"] = "fake"
+    confirm_paid_request: bool = False
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Report that the API process is alive; dependency checks come later."""
@@ -60,6 +69,28 @@ def eval_fixture(suite_id: str) -> dict[str, object]:
         return get_fixture(suite_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/api/evals/suites/{suite_id}/run")
+def run_eval_suite(suite_id: str, request: SuiteRunRequest) -> dict[str, object]:
+    """Execute a known suite locally and persist its result artifact for review."""
+    with SessionLocal() as session:
+        try:
+            return run_suite(
+                session,
+                suite_id=suite_id,
+                strategy=request.strategy,
+                provider_id=request.provider,
+                confirm_paid_request=request.confirm_paid_request,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except (TypeError, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except SQLAlchemyError as error:
+            raise HTTPException(status_code=503, detail="The local database is unavailable") from error
 
 
 @app.put("/api/evals/suites/{suite_id}/fixture")

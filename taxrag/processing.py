@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from taxrag.config import settings
@@ -16,7 +16,14 @@ from taxrag.extraction import (
     extract_receita_guidance_html,
     extract_receita_questions_answers_pdf,
 )
-from taxrag.models import Chunk, ExtractedDocument, Source, SourceAnchor, SourceVersion
+from taxrag.models import (
+    Chunk,
+    ChunkEmbedding,
+    ExtractedDocument,
+    Source,
+    SourceAnchor,
+    SourceVersion,
+)
 from taxrag.storage import LocalObjectStorage
 
 
@@ -54,10 +61,11 @@ def process_latest_source_version(session: Session, source_key: str) -> Processi
     try:
         if existing_document is not None:
             # A parser change invalidates derived text, not the immutable raw source version.
-            for chunk in session.scalars(
-                select(Chunk).where(Chunk.source_version_id == source_version.id)
-            ):
-                session.delete(chunk)
+            old_chunk_ids = select(Chunk.id).where(Chunk.source_version_id == source_version.id)
+            session.execute(
+                delete(ChunkEmbedding).where(ChunkEmbedding.chunk_id.in_(old_chunk_ids))
+            )
+            session.execute(delete(Chunk).where(Chunk.source_version_id == source_version.id))
             for anchor in session.scalars(
                 select(SourceAnchor).where(SourceAnchor.source_version_id == source_version.id)
             ):
@@ -75,6 +83,8 @@ def process_latest_source_version(session: Session, source_key: str) -> Processi
         session.commit()
         return ProcessingResult("created", str(source_version.id), len(extraction.sections))
     except Exception:
+        # Restore a usable transaction before recording the failed processing status.
+        session.rollback()
         source_version.processing_status = "failed"
         session.commit()
         raise

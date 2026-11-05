@@ -10,7 +10,7 @@ import pymupdf
 from bs4 import BeautifulSoup, Tag
 
 EXTRACTOR_NAME = "source-family-extractors"
-EXTRACTOR_VERSION = "4"
+EXTRACTOR_VERSION = "5"
 
 
 @dataclass(frozen=True)
@@ -73,17 +73,21 @@ def extract_receita_guidance_html(html: bytes) -> ExtractionResult:
 
 
 DOU_ARTICLE_TWO = re.compile(r"^Art\. 2(?:º|o)\s+(?P<text>.+)$", re.IGNORECASE)
-DOU_ARTICLE = re.compile(r"^Art\.\s+\d+(?:º|o)?\s+", re.IGNORECASE)
+DOU_ARTICLE = re.compile(r"^Art\.\s+(?P<number>\d+)(?:º|o|\.)?(?:\s|$)", re.IGNORECASE)
 DOU_PARAGRAPH = re.compile(r"^§\s*(?P<number>\d+)º\s+(?P<text>.+)$")
 DOU_INCISO = re.compile(r"^(?P<roman>[IVXLCDM]+)\s*-\s+(?P<text>.+)$")
 DOU_ALINEA = re.compile(r"^[a-z]\)\s+.+$", re.IGNORECASE)
 
-
 def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
-    """Extract Art. 2 legal units from the official DOU HTML publication.
+    """Extract all articles (1–17) from the official DOU publication of IN RFB 2.312.
 
-    Each inciso repeats the article caput and, when applicable, its paragraph lead-in.
-    This makes a retrieved citation understandable without relying on neighboring chunks.
+    Art. 2 is chunked at the inciso/parágrafo level because each inciso is a distinct
+    filing-obligation criterion that benefits from individual retrieval. Each inciso chunk
+    repeats the article caput and, when applicable, its paragraph lead-in so a retrieved
+    citation is self-contained.
+
+    Arts. 1 and 3–17 are each stored as a single chunk covering the full article text,
+    including amending provisions, so the extracted source remains complete.
     """
     soup = BeautifulSoup(html, "lxml")
     paragraphs = [_text(element) for element in soup.select("p.dou-paragraph")]
@@ -93,10 +97,11 @@ def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
     if article_index is None:
         raise ValueError("DOU HTML does not contain Art. 2 of IN RFB 2.312/2026")
 
+    # --- Art. 2 fine-grained extraction (inciso/parágrafo level) ---
     article_match = DOU_ARTICLE_TWO.match(paragraphs[article_index])
     assert article_match is not None
     article_caput = paragraphs[article_index]
-    sections = [
+    sections: list[ExtractedSection] = [
         ExtractedSection(
             anchor_key="art-2-caput",
             display_title="Art. 2, caput",
@@ -140,7 +145,9 @@ def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
             )
         )
 
+    art2_end_index = article_index + 1
     for text in paragraphs[article_index + 1 :]:
+        art2_end_index += 1
         if DOU_ARTICLE.match(text):
             break
         paragraph_match = DOU_PARAGRAPH.match(text)
@@ -172,8 +179,79 @@ def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
             raise ValueError("DOU alinea appeared without a parent inciso")
 
     append_inciso()
+
+    # --- Arts. 1 and 3–14: one chunk per article ---
+    # Walk from the beginning of the paragraph list to collect Art. 1, then from
+    # the end of Art. 2 onwards for Arts. 3–14. Articles are stored in source order.
+    _collect_whole_articles(paragraphs, sections, start=0, end=article_index)
+    _collect_whole_articles(paragraphs, sections, start=art2_end_index - 1, end=len(paragraphs))
+
+    # Re-sort by temporary ordinal, then assign unique contiguous values required
+    # by the database's per-source uniqueness constraints.
+    sections.sort(key=lambda s: s.ordinal)
+    sections = [
+        ExtractedSection(
+            anchor_key=section.anchor_key,
+            display_title=section.display_title,
+            ordinal=index,
+            text=section.text,
+            page_start=section.page_start,
+            page_end=section.page_end,
+            search_text=section.search_text,
+        )
+        for index, section in enumerate(sections, start=1)
+    ]
+
     normalized_text = "\n\n".join(f"{section.display_title}\n{section.text}" for section in sections)
     return ExtractionResult(normalized_text=normalized_text, sections=sections)
+
+
+def _collect_whole_articles(
+    paragraphs: list[str],
+    sections: list[ExtractedSection],
+    start: int,
+    end: int,
+) -> None:
+    """Collect paragraphs between consecutive article markers as single-chunk sections.
+
+    Skips Art. 2, which is handled separately at inciso/parágrafo level.
+    """
+    current_number: int | None = None
+    current_blocks: list[str] = []
+
+    def flush() -> None:
+        if current_number is None or not current_blocks:
+            return
+        text = "\n".join(current_blocks).strip()
+        if not text:
+            return
+        # Temporary sort keys place whole articles around Art. 2's finer-grained chunks.
+        ordinal = 0 if current_number == 1 else 1000 + current_number
+        sections.append(
+            ExtractedSection(
+                anchor_key=f"art-{current_number}-caput",
+                display_title=f"Art. {current_number}",
+                ordinal=ordinal,
+                text=text,
+            )
+        )
+
+    for text in paragraphs[start:end]:
+        m = DOU_ARTICLE.match(text)
+        if m:
+            number = int(m.group("number"))
+            flush()
+            if number == 2:
+                # Art. 2 is chunked separately; every other article remains indexed.
+                current_number = None
+                current_blocks = []
+                continue
+            current_number = number
+            current_blocks = [text]
+        elif current_number is not None:
+            current_blocks.append(text)
+
+    flush()
 
 
 def _paragraph_key(label: str) -> str:
@@ -187,7 +265,12 @@ QUESTION_HEADER = re.compile(r"(?m)^(?P<number>\d{3})\s+[—·]\s+(?P<title>.+)$
 
 
 def extract_receita_questions_answers_pdf(pdf: bytes) -> ExtractionResult:
-    """Extract the initial IRPF filing-obligation questions with their PDF page provenance."""
+    """Extract all IRPF questions from the official Perguntas e Respostas PDF with page provenance.
+
+    The P&R manual contains 700+ numbered questions covering every IRPF topic. Each question
+    becomes one anchor-keyed chunk. The anchor key embeds the question number and the page it
+    starts on so citations are verifiable in the original PDF.
+    """
     document = pymupdf.open(stream=pdf, filetype="pdf")
     sections: list[ExtractedSection] = []
     current_number: int | None = None
@@ -222,9 +305,6 @@ def extract_receita_questions_answers_pdf(pdf: bytes) -> ExtractionResult:
                 page_start,
                 page_end,
             )
-            if question_number > 6:
-                return _pdf_result(sections)
-
             current_number = question_number
             current_title = _normalize_pdf_text(match.group("title"))
             current_blocks = []
@@ -269,7 +349,7 @@ def _append_pdf_question(
 def _pdf_result(sections: list[ExtractedSection]) -> ExtractionResult:
     """Validate and assemble the normalized PDF extraction result."""
     if not sections:
-        raise ValueError("IRPF questions-and-answers PDF did not produce filing-obligation questions")
+        raise ValueError("IRPF questions-and-answers PDF did not produce any questions")
     normalized_text = "\n\n".join(f"{section.display_title}\n{section.text}" for section in sections)
     return ExtractionResult(normalized_text=normalized_text, sections=sections)
 

@@ -36,6 +36,23 @@ uv run python -m apps.worker process-source irpf-2026-in-rfb-2312
 The Eval Workshop has two application servers: FastAPI serves the API, and Next.js serves the
 browser UI. Start the database first because diagnostic questions query the indexed source data:
 
+For a one-command setup on macOS, install Docker Desktop, `uv`, `pnpm`, and Google Chrome, then run
+this from the repository root:
+
+```bash
+./scripts/run-workshop.sh
+```
+
+The script syncs locked dependencies, starts PostgreSQL, applies migrations, loads and processes the
+bundled official snapshots, starts the API and web UI, waits until both respond, and opens Chrome at
+<http://127.0.0.1:3000>. It is safe to rerun: unchanged snapshots are not reprocessed. Press Ctrl+C
+in that terminal to stop app servers launched by the script; PostgreSQL stays running and keeps its
+local data. Logs are written under `var/logs/eval-workshop/`.
+
+The launcher requires ports 8000 and 3000 to be free so it can track and stop both app servers.
+If a server is already running there, stop it in its original terminal and rerun the launcher. To
+start services manually and see the commands individually, use the workflow below.
+
 ```bash
 docker compose up -d
 uv run alembic upgrade head

@@ -20,6 +20,11 @@ from taxrag.evals import (
     run_answer_evals,
     run_retrieval_evals,
 )
+from taxrag.extraction import (
+    extract_dou_in_rfb_2312_html,
+    extract_receita_guidance_html,
+    extract_receita_questions_answers_pdf,
+)
 
 FIXTURE_PATH = Path("docs/evals/lexical-retrieval-baseline.jsonl")
 ANSWER_FIXTURE_PATH = Path("docs/evals/cited-answer-development.jsonl")
@@ -28,7 +33,7 @@ ANSWER_FIXTURE_PATH = Path("docs/evals/cited-answer-development.jsonl")
 def test_lexical_retrieval_fixture_has_unique_cases_and_valid_anchor_sets() -> None:
     cases = load_retrieval_eval_cases(FIXTURE_PATH)
 
-    assert len(cases) == 25
+    assert len(cases) == 50
     assert len({case.case_id for case in cases}) == len(cases)
     assert all(case.question and case.acceptable_anchor_keys for case in cases)
     assert all(set(case.preferred_anchor_keys) <= set(case.acceptable_anchor_keys) for case in cases)
@@ -100,10 +105,34 @@ def test_answer_fixture_has_reviewable_cases_and_an_abstention_case() -> None:
     """The answer fixture keeps subjective quality criteria visible rather than automating them."""
     cases = load_answer_eval_cases(ANSWER_FIXTURE_PATH)
 
-    assert len(cases) == 5
+    assert len(cases) == 20
     assert len({case.case_id for case in cases}) == len(cases)
     assert any(case.expected_abstain for case in cases)
     assert all(case.human_review_criteria for case in cases)
+
+
+def test_all_eval_anchors_exist_in_the_checked_in_official_sources() -> None:
+    """Fixture labels are checked against the exact local source snapshots and extractors."""
+    source_root = Path("data/source-snapshots")
+    dou = extract_dou_in_rfb_2312_html(
+        next((source_root / "irpf-2026-in-rfb-2312").rglob("original.html")).read_bytes()
+    )
+    guidance = extract_receita_guidance_html(
+        next((source_root / "irpf-2026-quem-deve-declarar").rglob("original.html")).read_bytes()
+    )
+    questions = extract_receita_questions_answers_pdf(
+        next((source_root / "irpf-2026-perguntas-respostas").rglob("*.pdf")).read_bytes()
+    )
+    available = {section.anchor_key for result in (dou, guidance, questions) for section in result.sections}
+    retrieval_cases = load_retrieval_eval_cases(FIXTURE_PATH)
+    answer_cases = load_answer_eval_cases(ANSWER_FIXTURE_PATH)
+    used = {
+        anchor
+        for case in (*retrieval_cases, *answer_cases)
+        for anchor in case.acceptable_anchor_keys
+    }
+
+    assert used <= available, f"unknown evaluation anchors: {sorted(used - available)}"
 
 
 def test_answer_fixture_rejects_support_anchors_for_an_abstention(tmp_path: Path) -> None:

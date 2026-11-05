@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal
+from urllib.parse import quote
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import bindparam, text
@@ -55,6 +56,14 @@ class RetrievedChunk:
     semantic_score: float | None = None
     lexical_rank: int | None = None
     semantic_rank: int | None = None
+    page_start: int | None = None
+
+    @property
+    def source_link(self) -> str:
+        """Link to a PDF page or best-effort HTML text location within the official document."""
+        if self.page_start is not None:
+            return f"{self.canonical_url}#page={self.page_start}"
+        return f"{self.canonical_url}#:~:text={quote(self.anchor_title, safe='')}"
 
 
 def validate_strategy(strategy: str) -> RetrievalStrategy:
@@ -132,6 +141,7 @@ def _search_hybrid_rrf_chunks(
                 semantic_score=semantic_match.semantic_score if semantic_match else None,
                 lexical_rank=lexical_rank,
                 semantic_rank=semantic_rank,
+                page_start=source_match.page_start,
             )
         )
     return sorted(
@@ -170,6 +180,7 @@ def _search_lexical_chunks(
             s.title AS source_title,
             s.canonical_url,
             s.authority_level,
+            a.page_start,
             {lexical_expression} AS lexical_score,
             {score_expression} AS score
         FROM chunks AS c
@@ -197,6 +208,7 @@ def _search_lexical_chunks(
             strategy=strategy,
             score=float(row["score"]),
             lexical_score=float(row["lexical_score"]),
+            page_start=row["page_start"],
         )
         for row in rows
     ]
@@ -224,6 +236,7 @@ def _search_semantic_chunks(
             s.title AS source_title,
             s.canonical_url,
             s.authority_level,
+            a.page_start,
             1 - (ce.embedding <=> :embedding) AS semantic_score
         FROM chunk_embeddings AS ce
         JOIN chunks AS c ON c.id = ce.chunk_id
@@ -259,6 +272,7 @@ def _search_semantic_chunks(
             strategy="semantic",
             score=float(row["semantic_score"]),
             semantic_score=float(row["semantic_score"]),
+            page_start=row["page_start"],
         )
         for row in rows
     ]

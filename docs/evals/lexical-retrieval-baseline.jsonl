@@ -2,7 +2,7 @@
 {"id":"lex-002","question":"Recebi rendimentos isentos. Qual é o limite para entregar a declaração?","acceptable_anchor_keys":["art-2-inciso-ii","limites-de-valor-para-o-exercicio-2026--03","question-001--p23"],"preferred_anchor_keys":["art-2-inciso-ii"]}
 {"id":"lex-003","question":"Em quais situações sou obrigado a declarar o imposto de renda?","acceptable_anchor_keys":["question-001--p23","voce-esta-obrigado-se--02"],"preferred_anchor_keys":["question-001--p23"]}
 {"id":"lex-004","question":"Posso enviar a declaração mesmo sem ser obrigado para pedir restituição?","acceptable_anchor_keys":["art-2-paragrafo-2","quem-nao-precisa-entregar-a-declaracao--05","question-002--p24"],"preferred_anchor_keys":["art-2-paragrafo-2"]}
-{"id":"lex-005","question":"Quem pode ser meu dependente no imposto de renda?","acceptable_anchor_keys":["quem-pode-ser-dependente--06"]}
+{"id":"lex-005","question":"Quem pode ser meu dependente no imposto de renda?","acceptable_anchor_keys":["quem-pode-ser-dependente--06","question-340--p175"],"preferred_anchor_keys":["question-340--p175"]}
 {"id":"lex-006","question":"Como funciona a declaração em conjunto?","acceptable_anchor_keys":["quem-pode-declarar-em-conjunto--07"]}
 {"id":"lex-007","question":"Quem é considerado residente no Brasil para o imposto de renda?","acceptable_anchor_keys":["quem-e-considerado-residente-no-brasil--08"]}
 {"id":"lex-008","question":"Onde encontro as normas do exercício 2026?","acceptable_anchor_keys":["art-2-caput","legislacao--04"],"preferred_anchor_keys":["art-2-caput"]}
@@ -23,3 +23,28 @@
 {"id":"lex-023","question":"Posso aparecer ao mesmo tempo como titular e dependente em declarações diferentes?","acceptable_anchor_keys":["art-2-paragrafo-3","question-002--p24"],"preferred_anchor_keys":["art-2-paragrafo-3"]}
 {"id":"lex-024","question":"Ser sócio ou titular de empresa, por si só, obriga a entregar a declaração?","acceptable_anchor_keys":["question-003--p24"]}
 {"id":"lex-025","question":"Existe idade máxima ou mínima para ser dispensado ou obrigado a declarar IRPF?","acceptable_anchor_keys":["question-006--p25"]}
+{"id":"lex-026","question":"Como funciona o desconto simplificado no imposto de renda e qual o percentual de dedução?","acceptable_anchor_keys":["art-3-caput","question-012--p27"],"preferred_anchor_keys":["art-3-caput"]}
+{"id":"lex-027","question":"Qual o valor limite do desconto simplificado para o exercício de 2026?","acceptable_anchor_keys":["art-3-caput","question-012--p27"],"preferred_anchor_keys":["art-3-caput"]}
+{"id":"lex-028","question":"Quem pode optar pelo desconto simplificado na entrega da declaração?","acceptable_anchor_keys":["art-3-caput","question-014--p27"],"preferred_anchor_keys":["question-014--p27"]}
+{"id":"lex-029","question":"O contribuinte com mais de uma fonte pagadora pode optar pelo desconto simplificado?","acceptable_anchor_keys":["question-015--p27"],"preferred_anchor_keys":["question-015--p27"]}
+{"id":"lex-030","question":"A opção pelo desconto simplificado substitui a isenção de aposentadoria de maior de 65 anos?","acceptable_anchor_keys":["question-018--p28"],"preferred_anchor_keys":["question-018--p28"]}
+{"id":"lex-031","question":"Qual é o prazo de entrega da Declaração de Ajuste Anual em 2026?","acceptable_anchor_keys":["art-7-caput","question-021--p29"],"preferred_anchor_keys":["art-7-caput"]}
+{"id":"lex-032","question":"Até que horas no último dia do prazo a declaração do IRPF pode ser transmitida?","acceptable_anchor_keys":["art-7-caput","question-021--p29"],"preferred_anchor_keys":["art-7-caput"]}
+{"id":"lex-033","question":"Quais são as formas disponíveis para elaborar a declaração do IRPF 2026?","acceptable_anchor_keys":["art-4-caput","question-026--p31"],"preferred_anchor_keys":["art-4-caput"]}
+{"id":"lex-034","question":"Quem está impedido de utilizar o aplicativo ou serviço Meu Imposto de Renda?","acceptable_anchor_keys":["art-5-caput","question-032--p33"],"preferred_anchor_keys":["art-5-caput"]}
+{"id":"lex-035","question":"Qual nível de conta gov.br é exigido para acessar a declaração pré-preenchida?","acceptable_anchor_keys":["art-6-caput","question-028--p32"],"preferred_anchor_keys":["art-6-caput"]}
+{"id":"lex-036","question":"Quais informações constam na declaração pré-preenchida do imposto de renda?","acceptable_anchor_keys":["art-6-caput","question-029--p32"],"preferred_anchor_keys":["question-029--p32"]}
+{"id":"lex-037","question":"Qual a multa por atraso na entrega da declaração de imposto de renda?","acceptable_anchor_keys":["art-10-caput","question-024--p30"],"preferred_anchor_keys":["art-10-caput"]}
+{"id":"lex-038","question":"Qual é o valor mínimo da multa por entregar a declaração em atraso?","acceptable_anchor_keys":["art-10-caput","question-024--p30"],"preferred_anchor_keys":["art-10-caput"]}
+{"id":"lex-039","question":"Quem não é obrigado a declarar paga multa se entregar a declaração fora do prazo?","acceptable_anchor_keys":["art-10-caput","question-025--p31"],"preferred_anchor_keys":["question-025--p31"]}
+{"id":"lex-040","question":"Posso retificar uma declaração de imposto de renda já apresentada?","acceptable_anchor_keys":["art-9-caput","question-043--p38"],"preferred_anchor_keys":["art-9-caput"]}
+{"id":"lex-041","question":"É possível mudar a opção de tributação para desconto simplificado na declaração retificadora após o prazo?","acceptable_anchor_keys":["art-9-caput","question-046--p39"],"preferred_anchor_keys":["art-9-caput"]}
+{"id":"lex-042","question":"Em até quantas quotas pode ser parcelado o saldo de imposto a pagar no IRPF?","acceptable_anchor_keys":["art-12-caput","question-063--p44"],"preferred_anchor_keys":["art-12-caput"]}
+{"id":"lex-043","question":"Qual é o valor mínimo de cada quota do imposto de renda parcelado?","acceptable_anchor_keys":["art-12-caput","question-063--p44"],"preferred_anchor_keys":["art-12-caput"]}
+{"id":"lex-044","question":"Como são calculados os juros sobre as quotas do imposto a pagar a partir da segunda quota?","acceptable_anchor_keys":["art-12-caput","question-064--p45"],"preferred_anchor_keys":["art-12-caput"]}
+{"id":"lex-045","question":"Quais são as modalidades permitidas para o pagamento do imposto apurado?","acceptable_anchor_keys":["art-12-caput","question-066--p46"],"preferred_anchor_keys":["art-12-caput"]}
+{"id":"lex-046","question":"A partir de qual valor os saldos de contas correntes bancárias precisam ser declarados em bens e direitos?","acceptable_anchor_keys":["art-11-caput"],"preferred_anchor_keys":["art-11-caput"]}
+{"id":"lex-047","question":"Qual o valor limite para dispensa de declaração de bens móveis e direitos?","acceptable_anchor_keys":["art-11-caput"],"preferred_anchor_keys":["art-11-caput"]}
+{"id":"lex-048","question":"Quem pode ser dependente na declaração de ajuste anual do imposto de renda?","acceptable_anchor_keys":["quem-pode-ser-dependente--06","question-340--p175"],"preferred_anchor_keys":["question-340--p175"]}
+{"id":"lex-049","question":"Quais despesas médicas podem ser deduzidas da base de cálculo do imposto de renda?","acceptable_anchor_keys":["question-367--p184"],"preferred_anchor_keys":["question-367--p184"]}
+{"id":"lex-050","question":"Rendimento de caderneta de poupança de pessoa física paga imposto de renda?","acceptable_anchor_keys":["question-741--p338"],"preferred_anchor_keys":["question-741--p338"]}

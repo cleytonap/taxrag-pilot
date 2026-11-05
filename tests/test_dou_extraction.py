@@ -18,6 +18,7 @@ def test_dou_extraction_preserves_article_paragraph_and_inciso_boundaries() -> N
         "art-2-paragrafo-1-inciso-ii",
         "art-2-paragrafo-2",
         "art-2-paragrafo-3",
+        "art-3-caput",
     ]
     stock_operations = result.sections[2]
     assert stock_operations.display_title == "Art. 2, inciso IV"
@@ -32,9 +33,43 @@ def test_dou_extraction_preserves_article_paragraph_and_inciso_boundaries() -> N
     assert "§ 1º Fica dispensada" in dependent_exception.text
     assert "Art. 2º Está obrigada" in dependent_exception.text
 
+    art3 = result.sections[8]
+    assert art3.display_title == "Art. 3"
+    assert art3.anchor_key == "art-3-caput"
+    assert "desconto simplificado" in art3.text
 
-def test_dou_extraction_stops_before_the_next_article() -> None:
-    """The first normative slice is deliberately scoped to filing-obligation Article 2."""
-    result = extract_dou_in_rfb_2312_html(FIXTURE_PATH.read_bytes())
 
-    assert "Art. 3º" not in result.normalized_text
+def test_dou_extraction_includes_amending_articles() -> None:
+    """Amending provisions remain retrievable as part of the complete official source."""
+    html = """
+    <html><body>
+    <p class="dou-paragraph">Art. 1º Disposições gerais.</p>
+    <p class="dou-paragraph">Art. 2º Está obrigada a apresentar a declaração:</p>
+    <p class="dou-paragraph">I - rendimentos tributáveis acima de 35 mil;</p>
+    <p class="dou-paragraph">Art. 14. O contribuinte pode autorizar procurador.</p>
+    <p class="dou-paragraph">Art. 15. Altera a Instrução Normativa SRF nº 81.</p>
+    <p class="dou-paragraph">Art. 16. Altera a Instrução Normativa SRF nº 208.</p>
+    <p class="dou-paragraph">Art. 17. Entra em vigor na data de publicação.</p>
+    </body></html>
+    """.encode()
+    result = extract_dou_in_rfb_2312_html(html)
+    anchor_keys = [section.anchor_key for section in result.sections]
+
+    assert "art-1-caput" in anchor_keys
+    assert "art-2-caput" in anchor_keys
+    assert "art-14-caput" in anchor_keys
+    assert "art-15-caput" in anchor_keys
+    assert "art-16-caput" in anchor_keys
+    assert "art-17-caput" in anchor_keys
+
+
+def test_official_dou_snapshot_has_all_substantive_articles_and_unique_ordinals() -> None:
+    """The checked-in official snapshot exercises the complete instrument, not a toy sample."""
+    source = next(Path("data/source-snapshots/irpf-2026-in-rfb-2312").rglob("original.html"))
+    result = extract_dou_in_rfb_2312_html(source.read_bytes())
+    keys = {section.anchor_key for section in result.sections}
+
+    assert {f"art-{number}-caput" for number in range(1, 18)} <= keys
+    assert [section.ordinal for section in result.sections] == list(
+        range(1, len(result.sections) + 1)
+    )

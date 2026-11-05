@@ -2,8 +2,9 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Eval Workshop
 
-The local Eval Workshop lets developers inspect and edit the two Git-tracked JSONL evaluation
-suites, read past local artifacts, and run one question with its full retrieval metadata.
+The local Eval Workshop lets developers run either evaluation suite, inspect saved per-case
+results, edit the Git-tracked JSONL fixtures, add a diagnostic query as a reviewed case, and open
+retrieved evidence at its source page or section.
 
 Start the API from the repository root:
 
@@ -22,8 +23,14 @@ Open `http://localhost:3000`. It targets `http://127.0.0.1:8000` by default; set
 working tree and should be reviewed and committed with Git. This unauthenticated developer tool
 must not be exposed outside localhost.
 
-The Question Lab defaults to a deterministic fake provider. Selecting OpenAI requires an explicit
-confirmation because it sends the question and retrieved chunks to OpenAI and may incur API cost.
+The Question Lab defaults to lexical retrieval and a deterministic fake answer provider. Suite
+runs and diagnostics are saved under `var/eval-runs/` with the fixture hash, selected strategy,
+source versions, aggregate metrics, and per-case evidence. Semantic retrieval and OpenAI answers
+require a confirmation because they send official text to an external API and may incur cost.
+
+PDF evidence links open at the cited page. The HTML sources do not expose persistent element IDs
+for every extracted section, so the workshop uses a browser text fragment where available and keeps
+the official document URL and section title visible as a fallback.
 
 ## Generic Next.js Setup
 

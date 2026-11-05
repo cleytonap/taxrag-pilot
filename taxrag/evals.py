@@ -41,6 +41,7 @@ class RetrievalEvalResult:
     acceptable_rank: int | None
     preferred_rank: int | None
     expected_recall_at_three: bool
+    retrieved_evidence: tuple[RetrievedEvidence, ...] = ()
 
     @property
     def passed_at_three(self) -> bool:
@@ -110,6 +111,9 @@ class RetrievedEvidence:
     anchor_key: str
     anchor_title: str
     source_title: str
+    source_link: str = ""
+    excerpt: str = ""
+    rank: int | None = None
 
 
 @dataclass(frozen=True)
@@ -249,6 +253,18 @@ def run_retrieval_evals(
                 acceptable_rank=acceptable_rank,
                 preferred_rank=preferred_rank,
                 expected_recall_at_three=case.expected_recall_at_three,
+                retrieved_evidence=tuple(
+                    RetrievedEvidence(
+                        chunk_id=match.chunk_id,
+                        anchor_key=match.anchor_key,
+                        anchor_title=match.anchor_title,
+                        source_title=match.source_title,
+                        source_link=match.source_link,
+                        excerpt=match.chunk_text,
+                        rank=rank,
+                    )
+                    for rank, match in enumerate(matches, start=1)
+                ),
             )
         )
     return results
@@ -276,8 +292,11 @@ def run_answer_evals(
                     anchor_key=chunk.anchor_key,
                     anchor_title=chunk.anchor_title,
                     source_title=chunk.source_title,
+                    source_link=chunk.source_link,
+                    excerpt=chunk.chunk_text,
+                    rank=rank,
                 )
-                for chunk in chunks
+                for rank, chunk in enumerate(chunks, start=1)
             )
 
         def record_rejection(
