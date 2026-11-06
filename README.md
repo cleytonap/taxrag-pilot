@@ -64,6 +64,9 @@ Using it:
   Git-tracked `docs/evals/baselines/`), or **Compare with baseline** to see regressed and improved
   cases.
 - **Question lab:** try one question, inspect the retrieved chunks, and add it to a suite.
+- **Glossary:** searchable definitions of every suite field, category value, outcome and metric.
+- **Answer verification toggle** (answer suites and Question lab): turns the second-pass answer
+  check on or off for that run; the server default comes from `TAXRAG_ANSWER_VERIFICATION`.
 
 The same operations are available without the UI:
 

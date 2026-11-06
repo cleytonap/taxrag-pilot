@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 
 from taxrag.database import SessionLocal
+from taxrag.eval_glossary import glossary
 from taxrag.eval_manager import (
+    answer_config,
     compare_artifacts,
     debug_answer,
     get_artifact,
@@ -44,6 +46,7 @@ class DebugAnswerRequest(BaseModel):
     strategy: Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf", "hybrid_rerank"] = "semantic"
     provider: Literal["fake", "openai"] = "fake"
     confirm_paid_request: bool = False
+    answer_verification: bool | None = None
 
 
 class SuiteRunRequest(BaseModel):
@@ -52,12 +55,26 @@ class SuiteRunRequest(BaseModel):
     strategy: Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf", "hybrid_rerank"] = "lexical"
     provider: Literal["fake", "openai"] = "fake"
     confirm_paid_request: bool = False
+    # None = server default (TAXRAG_ANSWER_VERIFICATION); ignored by the retrieval suite.
+    answer_verification: bool | None = None
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     """Report that the API process is alive; dependency checks come later."""
     return {"status": "ok"}
+
+
+@app.get("/api/evals/glossary")
+def eval_glossary() -> dict[str, object]:
+    """Field and value definitions for every suite, with live counts from the fixtures."""
+    return glossary()
+
+
+@app.get("/api/evals/config")
+def eval_config() -> dict[str, object]:
+    """Return answer-pipeline defaults so the UI can show and override them per run."""
+    return answer_config()
 
 
 @app.get("/api/evals/suites")
@@ -86,6 +103,7 @@ def run_eval_suite(suite_id: str, request: SuiteRunRequest) -> dict[str, object]
                 strategy=request.strategy,
                 provider_id=request.provider,
                 confirm_paid_request=request.confirm_paid_request,
+                answer_verification=request.answer_verification,
             )
         except KeyError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -108,6 +126,7 @@ def start_eval_suite_job(suite_id: str, request: SuiteRunRequest) -> dict[str, o
             strategy=request.strategy,
             provider_id=request.provider,
             confirm_paid_request=request.confirm_paid_request,
+            answer_verification=request.answer_verification,
         )
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
@@ -198,6 +217,7 @@ def debug_eval_answer(request: DebugAnswerRequest) -> dict[str, object]:
                 strategy=request.strategy,
                 provider_id=request.provider,
                 confirm_paid_request=request.confirm_paid_request,
+                answer_verification=request.answer_verification,
             )
         except PermissionError as error:
             raise HTTPException(status_code=403, detail=str(error)) from error

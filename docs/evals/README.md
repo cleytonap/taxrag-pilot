@@ -27,9 +27,9 @@ How to read them together:
 
 ## Production Focus
 
-The product optimises **one** pipeline: `TAXRAG_ANSWER_STRATEGY` (default `semantic`; the
-candidate replacement `hybrid_rerank` is adopted only if V2 meets the rule in
-`v1-results-rca.md` §5). A change
+The product optimises **one** pipeline: `TAXRAG_ANSWER_STRATEGY`, default `hybrid_rerank` since
+V2 (it met the adoption rule; see `v2-results-analysis.md`). Semantic, lexical and hybrid RRF
+remain diagnostics. A change
 is accepted on its generation and e2e results. Retrieval metrics explain those results. The other
 retrieval strategies stay in the retrieval suite as diagnostics and references; they are not
 required to improve. Commands and the UI default to the production strategy. Citation text and
@@ -49,6 +49,14 @@ indexed text are separate columns, so an indexing change never alters what a use
   deliberate abstention; `verifier_blocked_answerable` counts its cost).
 - **Answers show their caveats.** `limitation` and `clarification_question` are part of the
   user-visible answer and are graded in human review.
+
+## Reference And Reports
+
+- **Glossary** of every fixture field, category value, outcome and metric:
+  [glossary.md](glossary.md) (generated; also the Workshop's **Glossary** tab, with search).
+- **Progress report** for leads and PM: [EVAL-PROGRESS-REPORT.md](EVAL-PROGRESS-REPORT.md).
+- Per-version analyses: [v0-baseline-rca.md](v0-baseline-rca.md),
+  [v1-results-rca.md](v1-results-rca.md), [v2-results-analysis.md](v2-results-analysis.md).
 
 ## Evaluation Sets
 

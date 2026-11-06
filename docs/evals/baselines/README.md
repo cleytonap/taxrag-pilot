@@ -58,7 +58,35 @@ Notes:
 
 Analysis: [../v1-results-rca.md](../v1-results-rca.md).
 
-## Recording V2
+## V2 baseline (reranker + verifier)
+
+Same fixtures and corpus as V1. New: `hybrid_rerank` retrieval, the answer verifier, short
+evidence ids and the prompt rules from `../v1-results-rca.md` §4.
+
+| Run | File | Headline |
+| --- | --- | --- |
+| retrieval · `hybrid_rerank` (**production since V2**) | `v2_retrieval_hybrid_rerank.json` | recall@3 **69/69 (100%)**, @1 97%; preferred 41/45 |
+| retrieval · `semantic` | `v2_retrieval_semantic.json` | identical to V1 (87.0%) |
+| retrieval · `lexical` | `v2_retrieval_lexical.json` | identical to V1 (75.4%) |
+| e2e · `hybrid_rerank` · `openai` | `v2_answer_hybrid_rerank_openai.json` | **29/33**: answerable 19/22, abstentions 10/11, 1 unsafe |
+| e2e · `semantic` · `openai` | `v2_answer_semantic_openai.json` | 25/33: answerable 17/22, abstentions 8/11, 3 unsafe |
+| generation · verifier on | `v2_generation_fixed_context_openai.json` | 28/35: answerable 20/22, abstentions 8/13, 5 unsafe |
+| generation · verifier **off** (ablation) | `v2-ans-ver-false_generation_fixed_context_openai.json` | 28/35: answerable 20/22, abstentions 8/13, 4 unsafe |
+
+The ablation's label (`v2-ans-ver-false`) marks the configuration; its artifact also records
+`"answer_verification": false`. Analysis: [../v2-results-analysis.md](../v2-results-analysis.md).
+Summary for leads and PM: [../EVAL-PROGRESS-REPORT.md](../EVAL-PROGRESS-REPORT.md).
+
+From V2 onwards, answer-suite artifacts also store the draft blocked by validation or the
+verifier (`rejected_draft`), so each block can be reviewed.
+
+## Recording V3 and later
+
+Use the same pattern: run the production pipeline (retrieval, generation, e2e), then promote
+with a new label. Use the Workshop's verification toggle (or `--verification on|off`) for
+ablations and name the label after the configuration, as in `v2-ans-ver-false`.
+
+## Recording V2 (as run)
 
 Run the experiment plan in [../v1-results-rca.md](../v1-results-rca.md) §5 (reranked retrieval,
 generation with and without the verifier, e2e with both strategies), then promote the chosen

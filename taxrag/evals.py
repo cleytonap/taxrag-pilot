@@ -312,6 +312,7 @@ def run_answer_evals(
     strategy: RetrievalStrategy = "semantic",
     embedding_provider: EmbeddingProvider | None = None,
     on_progress: Callable[[int, int], None] | None = None,
+    verify: bool | None = None,
 ) -> list[AnswerEvalResult]:
     """Run answer cases and retain local trace data needed to diagnose failures."""
     results = []
@@ -355,6 +356,7 @@ def run_answer_evals(
             embedding_provider=embedding_provider,
             on_retrieved_chunks=record_retrieval,
             on_validation_failure=record_rejection,
+            verify=verify,
         )
         results.append(
             evaluate_answer(
@@ -431,6 +433,7 @@ def run_generation_evals(
     cases: list[GenerationEvalCase],
     provider: AnswerProvider,
     on_progress: Callable[[int, int], None] | None = None,
+    verify: bool | None = None,
 ) -> list[AnswerEvalResult]:
     """Answer each case from its fixed context with the production answer code (no retrieval)."""
     results = []
@@ -458,6 +461,7 @@ def run_generation_evals(
             provider,
             strategy="fixed_context",
             on_validation_failure=record_rejection,
+            verify=verify,
         )
         evidence = tuple(
             RetrievedEvidence(

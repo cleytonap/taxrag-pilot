@@ -62,6 +62,18 @@ BASELINE_EXCERPT_CHARACTERS = 300
 BASELINE_LABEL = re.compile(r"^[a-z0-9][a-z0-9.-]{0,39}$")
 
 
+def answer_config() -> dict[str, Any]:
+    """Server-side defaults the Workshop shows and lets the user override per run."""
+    return {
+        "answer_strategy": settings.answer_strategy,
+        "answer_verification": settings.answer_verification,
+        "answer_top_k": settings.answer_top_k,
+        "answer_model": settings.answer_model,
+        "rerank_model": settings.rerank_model,
+        "verifier_model": settings.verifier_model,
+    }
+
+
 def list_suites() -> list[dict[str, Any]]:
     """Return the known suite summaries and their parsed, validated cases."""
     return [_suite_summary(suite_id) for suite_id in SUITE_PATHS]
@@ -186,9 +198,15 @@ def run_suite(
     provider_id: str = "fake",
     confirm_paid_request: bool = False,
     on_progress: Callable[[int, int], None] | None = None,
+    answer_verification: bool | None = None,
 ) -> dict[str, Any]:
-    """Run one closed evaluation suite and persist a reproducible local JSON artifact."""
+    """Run one closed evaluation suite and persist a reproducible local JSON artifact.
+
+    ``answer_verification`` overrides the configured verifier for this run (None = configured);
+    the effective value is recorded in the artifact.
+    """
     path = _validate_run_request(suite_id, strategy, provider_id, confirm_paid_request)
+    verification = settings.answer_verification if answer_verification is None else answer_verification
 
     fixture_text = path.read_text(encoding="utf-8")
     fixture_hash = hashlib.sha256(fixture_text.encode()).hexdigest()
@@ -249,7 +267,9 @@ def run_suite(
         provider = DeterministicAnswerProvider() if provider_id == "fake" else configured_answer_provider()
         if suite_id == "generation":
             cases = load_generation_eval_cases(path)
-            results = run_generation_evals(session, cases, provider, on_progress=on_progress)
+            results = run_generation_evals(
+                session, cases, provider, on_progress=on_progress, verify=verification
+            )
         else:
             cases = load_answer_eval_cases(path)
             results = run_answer_evals(
@@ -259,6 +279,7 @@ def run_suite(
                 strategy=strategy,  # type: ignore[arg-type]
                 embedding_provider=embedding_provider,
                 on_progress=on_progress,
+                verify=verification,
             )
         passed = sum(result.passed_structural_checks for result in results)
         abstain_cases = [result for result in results if result.expected_abstain]
@@ -301,6 +322,9 @@ def run_suite(
                 "context_anchor_keys": list(getattr(case, "context_anchor_keys", ())),
                 "retrieved_evidence": [asdict(item) for item in result.trace.retrieved_evidence],
                 "validation_error": result.trace.validation_error,
+                # The blocked draft (untrusted, never shown to users) so reviewers can judge
+                # whether a validation/verifier block was right.
+                "rejected_draft": _draft_to_dict(result.trace.rejected_draft),
             }
             for case, result in zip(cases, results, strict=True)
         ]
@@ -332,10 +356,10 @@ def run_suite(
         "answer_model": settings.answer_model if suite_id != "retrieval" and provider_id == "openai" else None,
         "answer_top_k": settings.answer_top_k if suite_id == "answer" else None,
         "rerank_model": settings.rerank_model if strategy == "hybrid_rerank" else None,
-        "answer_verification": settings.answer_verification if suite_id != "retrieval" else None,
+        "answer_verification": verification if suite_id != "retrieval" else None,
         "verifier_model": (
             settings.verifier_model
-            if suite_id != "retrieval" and provider_id == "openai" and settings.answer_verification
+            if suite_id != "retrieval" and provider_id == "openai" and verification
             else None
         ),
         "summary": summary,
@@ -412,6 +436,7 @@ def start_suite_run(
     provider_id: str = "fake",
     confirm_paid_request: bool = False,
     session_factory: Callable[[], Any] | None = None,
+    answer_verification: bool | None = None,
 ) -> dict[str, Any]:
     """Validate a run request, start it in a background thread, and return its job record."""
     _validate_run_request(suite_id, strategy, provider_id, confirm_paid_request)
@@ -451,6 +476,7 @@ def start_suite_run(
                     provider_id=provider_id,
                     confirm_paid_request=confirm_paid_request,
                     on_progress=lambda done, total: update(completed=done, total=total),
+                    answer_verification=answer_verification,
                 )
             update(status="succeeded", result=result)
         except Exception as error:  # noqa: BLE001 - reported to the local developer, not swallowed
@@ -605,6 +631,7 @@ def debug_answer(
     strategy: str,
     provider_id: str,
     confirm_paid_request: bool,
+    answer_verification: bool | None = None,
 ) -> dict[str, Any]:
     """Run one explicit local diagnostic question and return safe output plus RCA facts."""
     if not question.strip():
@@ -645,6 +672,7 @@ def debug_answer(
         embedding_provider=embedding_provider,
         on_retrieved_chunks=record_chunks,
         on_validation_failure=record_rejection,
+        verify=answer_verification,
     )
     return {
         "answer": answer.to_dict(),

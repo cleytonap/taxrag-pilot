@@ -283,6 +283,7 @@ def answer_question(
     | None = None,
     on_retrieved_chunks: Callable[[Sequence[RetrievedChunk]], None] | None = None,
     limit: int | None = None,
+    verify: bool | None = None,
 ) -> CitedAnswer:
     """Retrieve official evidence, draft an answer, and return only validated citations.
 
@@ -308,7 +309,12 @@ def answer_question(
             # Diagnostics must never weaken the answer path.
             pass
     return answer_from_evidence(
-        question, chunks, provider, strategy=strategy, on_validation_failure=on_validation_failure
+        question,
+        chunks,
+        provider,
+        strategy=strategy,
+        on_validation_failure=on_validation_failure,
+        verify=verify,
     )
 
 
@@ -340,8 +346,13 @@ def answer_from_evidence(
         [AnswerDraft | None, AnswerValidationError, Sequence[RetrievedChunk]], None
     ]
     | None = None,
+    verify: bool | None = None,
 ) -> CitedAnswer:
-    """Draft and validate an answer from given evidence (retrieved, or fixed by an eval case)."""
+    """Draft and validate an answer from given evidence (retrieved, or fixed by an eval case).
+
+    ``verify`` overrides the configured answer verification for one call (None = configured).
+    """
+    verification_enabled = settings.answer_verification if verify is None else verify
     if not chunks:
         return CitedAnswer(
             question=question,
@@ -367,7 +378,7 @@ def answer_from_evidence(
                 # Diagnostics must never weaken the safe-abstention boundary.
                 pass
         return _unverified_answer(question, strategy, provider.model)
-    if not draft.abstain and settings.answer_verification and hasattr(provider, "verify_answer"):
+    if not draft.abstain and verification_enabled and hasattr(provider, "verify_answer"):
         # Second pass (V1 RCA): provenance and figure checks cannot tell that a cited passage
         # is about another procedure or another year. A focused check decides whether the answer
         # addresses this question and is supported; if not, the system abstains (fail closed).

@@ -197,6 +197,11 @@ def main() -> None:
         help="required for semantic/hybrid retrieval or the OpenAI provider (billable API calls)",
     )
     run_parser.add_argument(
+        "--verification",
+        choices=("on", "off"),
+        help="override TAXRAG_ANSWER_VERIFICATION for this run (answer suites only)",
+    )
+    run_parser.add_argument(
         "--baseline",
         metavar="LABEL",
         help="also promote the saved run to docs/evals/baselines/ under this label (e.g. v0)",
@@ -346,6 +351,7 @@ def _dispatch(args: argparse.Namespace) -> None:
                 strategy=args.strategy,
                 provider_id=args.provider,
                 confirm_paid_request=args.confirm_paid,
+                answer_verification=None if args.verification is None else args.verification == "on",
                 on_progress=lambda done, total: print(
                     f"\r  {done}/{total} cases", end="", file=sys.stderr, flush=True
                 ),

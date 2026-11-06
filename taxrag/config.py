@@ -55,8 +55,9 @@ settings = Settings(
     embedding_dimensions=EMBEDDING_DIMENSIONS,
     answer_model=os.getenv("TAXRAG_ANSWER_MODEL", "gpt-4.1-mini"),
     # The one production retrieval pipeline that answers users and that optimisation targets.
-    # Other strategies remain available as diagnostics (see docs/evals/README.md).
-    answer_strategy=os.getenv("TAXRAG_ANSWER_STRATEGY", "semantic"),
+    # hybrid_rerank since V2 (recall@3 100% vs 87% semantic; e2e 29/33 vs 25/33; see
+    # docs/evals/v2-results-analysis.md). Other strategies remain diagnostics.
+    answer_strategy=os.getenv("TAXRAG_ANSWER_STRATEGY", "hybrid_rerank"),
     # Evidence chunks given to the answer model. V0 used 3; every answerable V0 failure had no
     # acceptable chunk in those 3. Override to run ablations (e.g. TAXRAG_ANSWER_TOP_K=3).
     answer_top_k=int(os.getenv("TAXRAG_ANSWER_TOP_K", "5")),

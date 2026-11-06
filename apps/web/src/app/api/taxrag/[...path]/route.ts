@@ -14,6 +14,8 @@ async function forward(request: NextRequest, context: RouteContext) {
     apiPath === "/api/evals/debug-answer" ||
     apiPath === "/api/evals/baselines" ||
     apiPath === "/api/evals/compare" ||
+    apiPath === "/api/evals/config" ||
+    apiPath === "/api/evals/glossary" ||
     /^\/api\/evals\/suites\/[a-z0-9_-]+\/run$/.test(apiPath) ||
     /^\/api\/evals\/suites\/[a-z0-9_-]+\/jobs$/.test(apiPath) ||
     /^\/api\/evals\/jobs\/[a-f0-9]+$/.test(apiPath) ||
