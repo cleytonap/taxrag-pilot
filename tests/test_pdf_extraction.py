@@ -58,3 +58,23 @@ def test_official_pdf_snapshot_extracts_every_numbered_question_in_order() -> No
     assert by_key["question-107--p60"].display_title.startswith("Question 107: Qual é o prazo")
     assert "Declaração Final de Espólio deve ser apresentada" not in by_key["question-106--p59"].text
     assert by_key["question-341--p176"].display_title.startswith("Question 341: Filho(a)")
+
+
+def test_section_headings_belong_to_the_question_they_introduce() -> None:
+    """v7: headings printed after "Retorno ao sumário" describe the next question (V0 RC4)."""
+    source = next(Path("data/source-snapshots/irpf-2026-perguntas-respostas").rglob("*.pdf"))
+    sections = {
+        section.anchor_key: section
+        for section in extract_receita_questions_answers_pdf(source.read_bytes()).sections
+    }
+
+    assert "(BETS)" in (sections["question-318--p160"].search_text or "")
+    assert "BETS" not in sections["question-317--p159"].text
+    assert "PREENCHIMENTO" not in sections["question-025--p31"].text
+    assert all("Retorno ao sumário" not in section.text for section in sections.values())
+    # Full multi-line titles: the strongest retrieval key of a P&R question.
+    assert sections["question-025--p31"].display_title.endswith(
+        "está sujeito à multa por atraso na entrega da declaração?"
+    )
+    assert all(section.display_title.endswith("?") for section in sections.values())
+    assert not sections["question-025--p31"].text.startswith("multa por atraso")

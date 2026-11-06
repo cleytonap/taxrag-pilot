@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from taxrag.config import settings
 from taxrag.embeddings import EmbeddingProvider
+from taxrag.grounding import unsupported_figures
+from taxrag.language import UNSUPPORTED_LANGUAGE_MESSAGE, detect_unsupported_language
 from taxrag.retrieval import RetrievalStrategy, RetrievedChunk, search_chunks
 
 AnswerOutcome = Literal[
@@ -19,6 +21,7 @@ AnswerOutcome = Literal[
     "provider_abstained",
     "no_retrieved_evidence",
     "provider_rejected",
+    "unsupported_language",
 ]
 
 
@@ -110,11 +113,13 @@ class CitedAnswer:
 
     @property
     def display_text(self) -> str:
-        """Return the complete user-facing message, including a safe abstention explanation."""
-        if self.text:
-            return self.text
+        """Return the complete user-facing message: claims plus caveats and any question.
+
+        Caveats are part of the answer, not metadata: V0 showed answers such as "você não está
+        obrigado" whose only qualification ("por este critério") lived in a hidden field.
+        """
         return "\n\n".join(
-            part for part in (self.limitation, self.clarification_question) if part
+            part for part in (self.text, self.limitation, self.clarification_question) if part
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -211,6 +216,7 @@ def answer_question(
     ]
     | None = None,
     on_retrieved_chunks: Callable[[Sequence[RetrievedChunk]], None] | None = None,
+    limit: int | None = None,
 ) -> CitedAnswer:
     """Retrieve official evidence, draft an answer, and return only validated citations.
 
@@ -219,10 +225,13 @@ def answer_question(
     """
     if not question.strip():
         raise ValueError("Question must not be blank")
+    gated = unsupported_language_answer(question, strategy, provider.model)
+    if gated is not None:
+        return gated
     chunks = search_chunks(
         session,
         question,
-        limit=3,
+        limit=limit or settings.answer_top_k,
         strategy=strategy,
         embedding_provider=embedding_provider,
     )
@@ -232,6 +241,41 @@ def answer_question(
         except (OSError, TypeError, ValueError):
             # Diagnostics must never weaken the answer path.
             pass
+    return answer_from_evidence(
+        question, chunks, provider, strategy=strategy, on_validation_failure=on_validation_failure
+    )
+
+
+def unsupported_language_answer(
+    question: str, strategy: RetrievalStrategy, answer_model: str
+) -> CitedAnswer | None:
+    """Return the fixed Portuguese-only notice for a confidently non-Portuguese question."""
+    if detect_unsupported_language(question) is None:
+        return None
+    return CitedAnswer(
+        question=question,
+        claims=(),
+        abstain=True,
+        limitation=UNSUPPORTED_LANGUAGE_MESSAGE,
+        clarification_question=None,
+        retrieval_strategy=strategy,
+        answer_model=answer_model,
+        outcome="unsupported_language",
+    )
+
+
+def answer_from_evidence(
+    question: str,
+    chunks: Sequence[RetrievedChunk],
+    provider: AnswerProvider,
+    *,
+    strategy: RetrievalStrategy,
+    on_validation_failure: Callable[
+        [AnswerDraft | None, AnswerValidationError, Sequence[RetrievedChunk]], None
+    ]
+    | None = None,
+) -> CitedAnswer:
+    """Draft and validate an answer from given evidence (retrieved, or fixed by an eval case)."""
     if not chunks:
         return CitedAnswer(
             question=question,
@@ -246,7 +290,7 @@ def answer_question(
     draft: AnswerDraft | None = None
     try:
         draft = provider.draft_answer(question, chunks)
-        claims = validate_answer_draft(draft, chunks)
+        claims = validate_answer_draft(draft, chunks, question=question)
     except AnswerValidationError as error:
         # A malformed or unsupported provider response is untrusted output, not a CLI/API crash.
         # Do not expose its text: return the same safe outcome as insufficient evidence instead.
@@ -289,9 +333,9 @@ def _unverified_answer(
 
 
 def validate_answer_draft(
-    draft: AnswerDraft, chunks: Sequence[RetrievedChunk]
+    draft: AnswerDraft, chunks: Sequence[RetrievedChunk], *, question: str = ""
 ) -> tuple[AnswerClaim, ...]:
-    """Accept only claims that select chunks retrieved for this question.
+    """Accept only claims that cite retrieved chunks and state no unsupported figures.
 
     The application, not the provider, attaches each displayed source excerpt. This keeps
     citations literal and stable without asking the provider to transcribe legal text. An
@@ -327,6 +371,17 @@ def validate_answer_draft(
                     authority_level=chunk.authority_level,
                     excerpt=chunk.chunk_text,
                 )
+            )
+        # Provenance alone is not support (V0: "R$ 81.000,00" cited to a chunk without it).
+        # Every amount, percentage and date in a claim must come from its cited evidence, the
+        # question, or simple arithmetic on them (e.g. 12 x a monthly amount).
+        unsupported = unsupported_figures(
+            claim.text, [citation.excerpt for citation in citations], question
+        )
+        if unsupported:
+            raise AnswerValidationError(
+                f"Claim {claim_index} states figures absent from its cited evidence: "
+                + ", ".join(unsupported)
             )
         validated_claims.append(AnswerClaim(claim.text, tuple(citations)))
     return tuple(validated_claims)
@@ -395,10 +450,22 @@ def _instructions() -> str:
         "abstain=true, deixe claims vazio e explique a limitação no campo limitation. "
         "Responda de forma concisa. Não repita a mesma regra usando fontes equivalentes e não "
         "liste outras hipóteses de obrigatoriedade, salvo se forem necessárias para evitar uma "
-        "conclusão enganosa. "
+        "conclusão enganosa. Quando concluir que a pessoa não está obrigada (ou está dispensada) "
+        "por um critério, diga no próprio texto que outras hipóteses podem obrigá-la. "
+        "O campo limitation é exibido ao usuário junto com a resposta: use-o para ressalvas "
+        "essenciais (condições, período, residência), nunca para conteúdo dispensável. "
+        "Se a pergunta partir de uma premissa contrariada pelas evidências, corrija a premissa "
+        "antes de responder ao restante. "
         "Cada afirmação factual deve ter uma ou mais citações com um chunk_id fornecido. "
-        "Nunca invente chunk_id ou regra. A aplicação adicionará o trecho literal da fonte. "
-        "Se a evidência não bastar, use abstain=true, deixe claims vazio e não invente regra."
+        "Nunca invente chunk_id ou regra, e não use conhecimento próprio: todo valor, "
+        "percentual, data, prazo ou passo de procedimento deve constar do trecho citado. "
+        "Um trecho sobre outro assunto não sustenta a resposta, mesmo que use palavras parecidas. "
+        "A aplicação adicionará o trecho literal da fonte. "
+        "Abstenha-se (abstain=true, claims vazio) quando a evidência não responder diretamente à "
+        "pergunta, ou quando a pergunta tratar de pessoa jurídica, MEI ou Simples Nacional, "
+        "tributos estaduais ou municipais, tributos de outro país, ou assunto alheio ao IRPF. "
+        "Ao se abster, explique em limitation que o assistente responde sobre o IRPF do "
+        "exercício de 2026 com base em fontes oficiais e que as evidências não tratam do tema."
     )
 
 

@@ -31,19 +31,29 @@ from taxrag.config import PROJECT_ROOT, settings
 from taxrag.embeddings import configured_embedding_provider, require_complete_embeddings
 from taxrag.evals import (
     load_answer_eval_cases,
+    load_generation_eval_cases,
     load_retrieval_eval_cases,
     run_answer_evals,
+    run_generation_evals,
     run_retrieval_evals,
 )
 from taxrag.models import Source, SourceVersion
 from taxrag.retrieval import SUPPORTED_STRATEGIES, RetrievedChunk
 
-SuiteId = Literal["retrieval", "answer"]
+SuiteId = Literal["retrieval", "generation", "answer"]
 ProviderId = Literal["fake", "openai"]
 
+# Three layers (see docs/evals/README.md): retrieval only, generation only (fixed evidence),
+# and end-to-end. The "answer" id is kept for the e2e suite so V0 artifacts stay comparable.
 SUITE_PATHS: dict[SuiteId, Path] = {
     "retrieval": PROJECT_ROOT / "docs/evals/lexical-retrieval-baseline.jsonl",
+    "generation": PROJECT_ROOT / "docs/evals/answer-generation.jsonl",
     "answer": PROJECT_ROOT / "docs/evals/cited-answer-development.jsonl",
+}
+SUITE_LABELS = {
+    "retrieval": "Retrieval (chunks only)",
+    "generation": "Answer generation (fixed evidence)",
+    "answer": "End-to-end answers (retrieval + generation)",
 }
 ARTIFACTS_DIRECTORY = PROJECT_ROOT / "var/eval-runs"
 # Promoted baselines are Git-tracked so a reference result survives `var/` cleanup and is shared.
@@ -133,6 +143,8 @@ def run_suite(
     fixture_hash = hashlib.sha256(fixture_text.encode()).hexdigest()
     metadata = _case_metadata(fixture_text)
     started_at = datetime.now(UTC)
+    if suite_id == "generation":
+        strategy = "fixed_context"  # evidence comes from each case, not from a retriever
     requires_embeddings = strategy in {"semantic", "hybrid_rrf"}
     embedding_provider = configured_embedding_provider() if requires_embeddings else None
     if embedding_provider is not None:
@@ -152,10 +164,15 @@ def run_suite(
         preferred = [result for result in results if result.preferred_anchor_keys]
         passed = sum(result.passed_at_three for result in required)
         preferred_passed = sum(result.preferred_at_three is True for result in preferred)
+        ranks = [result.acceptable_rank for result in required]
         summary = {
             "case_count": len(results),
             "passed": passed,
             "recall_at_three": passed / len(required) if required else None,
+            "recall_at_one": _recall(ranks, 1),
+            "recall_at_five": _recall(ranks, 5),
+            "recall_at_ten": _recall(ranks, 10),
+            "mrr_at_ten": sum(1 / rank for rank in ranks if rank) / len(ranks) if ranks else None,
             "preferred_case_count": len(preferred),
             "preferred_passed": preferred_passed,
             "preferred_recall_at_three": (
@@ -178,16 +195,20 @@ def run_suite(
             for case, result in zip(cases, results, strict=True)
         ]
     else:
-        cases = load_answer_eval_cases(path)
         provider = DeterministicAnswerProvider() if provider_id == "fake" else configured_answer_provider()
-        results = run_answer_evals(
-            session,
-            cases,
-            provider,
-            strategy=strategy,  # type: ignore[arg-type]
-            embedding_provider=embedding_provider,
-            on_progress=on_progress,
-        )
+        if suite_id == "generation":
+            cases = load_generation_eval_cases(path)
+            results = run_generation_evals(session, cases, provider, on_progress=on_progress)
+        else:
+            cases = load_answer_eval_cases(path)
+            results = run_answer_evals(
+                session,
+                cases,
+                provider,
+                strategy=strategy,  # type: ignore[arg-type]
+                embedding_provider=embedding_provider,
+                on_progress=on_progress,
+            )
         passed = sum(result.passed_structural_checks for result in results)
         abstain_cases = [result for result in results if result.expected_abstain]
         answer_cases = [result for result in results if not result.expected_abstain]
@@ -199,6 +220,11 @@ def run_suite(
             "abstention_passed": sum(result.passed_structural_checks for result in abstain_cases),
             "answerable_case_count": len(answer_cases),
             "answerable_passed": sum(result.passed_structural_checks for result in answer_cases),
+            # Shown an answer where the case requires abstention: the most harmful failure.
+            "unsafe_answers": sum(result.unsafe for result in results),
+            "validation_rejections": sum(
+                result.answer.outcome == "provider_rejected" for result in results
+            ),
         }
         case_results = [
             {
@@ -213,6 +239,7 @@ def run_suite(
                 "cited_acceptable_anchor_keys": list(result.cited_acceptable_anchor_keys),
                 "human_review_criteria": list(result.human_review_criteria),
                 "answer": result.answer.to_dict(),
+                "context_anchor_keys": list(getattr(case, "context_anchor_keys", ())),
                 "retrieved_evidence": [asdict(item) for item in result.trace.retrieved_evidence],
                 "validation_error": result.trace.validation_error,
             }
@@ -235,9 +262,10 @@ def run_suite(
         "started_at": started_at.isoformat(),
         "finished_at": finished_at.isoformat(),
         "strategy": strategy,
-        "provider": provider_id if suite_id == "answer" else None,
+        "provider": provider_id if suite_id in {"answer", "generation"} else None,
         "embedding_model": embedding_provider.model if embedding_provider else None,
-        "answer_model": settings.answer_model if suite_id == "answer" and provider_id == "openai" else None,
+        "answer_model": settings.answer_model if suite_id != "retrieval" and provider_id == "openai" else None,
+        "answer_top_k": settings.answer_top_k if suite_id == "answer" else None,
         "summary": summary,
         "source_versions": [
             {"source_key": row.source_key, "source_version_id": str(row.id), "content_hash": row.content_hash}
@@ -264,13 +292,19 @@ def _validate_run_request(
     path = _suite_path(suite_id)
     if strategy not in SUPPORTED_STRATEGIES:
         raise ValueError(f"Unknown retrieval strategy: {strategy}")
-    if suite_id == "answer" and provider_id not in {"fake", "openai"}:
+    if suite_id in {"answer", "generation"} and provider_id not in {"fake", "openai"}:
         raise ValueError(f"Unknown answer provider: {provider_id}")
     if suite_id == "retrieval" and provider_id != "fake":
         raise ValueError("The retrieval suite does not use an answer provider")
-    if (provider_id == "openai" or strategy in {"semantic", "hybrid_rrf"}) and not confirm_paid_request:
+    uses_embeddings = suite_id != "generation" and strategy in {"semantic", "hybrid_rrf"}
+    if (provider_id == "openai" or uses_embeddings) and not confirm_paid_request:
         raise PermissionError("OpenAI requests require confirm_paid_request=true")
     return path
+
+
+def _recall(ranks: list[int | None], k: int) -> float | None:
+    """Share of cases whose first acceptable anchor is within the top k."""
+    return sum(rank is not None and rank <= k for rank in ranks) / len(ranks) if ranks else None
 
 
 def _case_metadata(fixture_text: str) -> dict[str, dict[str, Any]]:
@@ -415,7 +449,7 @@ def compare_artifacts(baseline_name: str, candidate_name: str) -> dict[str, Any]
         v["content_hash"] for v in candidate["source_versions"]
     }:
         warnings.append("Source versions differ; score changes may come from the corpus.")
-    for key in ("embedding_model", "answer_model", "provider"):
+    for key in ("embedding_model", "answer_model", "provider", "answer_top_k"):
         if baseline.get(key) != candidate.get(key):
             warnings.append(f"{key} differs: {baseline.get(key)} -> {candidate.get(key)}")
 
@@ -532,7 +566,7 @@ def _suite_summary(suite_id: SuiteId) -> dict[str, Any]:
     fixture = get_fixture(suite_id)
     return {
         "id": suite_id,
-        "label": "Retrieval baseline" if suite_id == "retrieval" else "Cited-answer development",
+        "label": SUITE_LABELS[suite_id],
         "path": fixture["path"],
         "case_count": len(fixture["cases"]),
         "cases": fixture["cases"],
@@ -549,8 +583,12 @@ def _suite_path(suite_id: str) -> Path:
 
 def _load_cases(suite_id: str, path: Path) -> list[dict[str, Any]]:
     """Load a fixture through its existing contract and serialize its immutable cases."""
-    cases = load_retrieval_eval_cases(path) if suite_id == "retrieval" else load_answer_eval_cases(path)
-    return [asdict(case) for case in cases]
+    loaders = {
+        "retrieval": load_retrieval_eval_cases,
+        "generation": load_generation_eval_cases,
+        "answer": load_answer_eval_cases,
+    }
+    return [asdict(case) for case in loaders[suite_id](path)]
 
 
 def _validate_fixture_text(suite_id: str, content: str) -> None:

@@ -19,19 +19,53 @@ Fixtures: `lexical-retrieval-baseline.jsonl` (70 cases, 10 edge cases) and
 `cited-answer-development.jsonl` (33 cases, 19 edge cases, 10 expected abstentions). Corpus:
 extractor v6, 787 chunks.
 
-| Run | Status | Headline |
+| Run | File | Headline |
 | --- | --- | --- |
-| retrieval · `lexical` | recorded `v0_retrieval_lexical.json` | recall@3 11/70 (15.7%); preferred 3/46 |
-| retrieval · `lexical_authority` | recorded `v0_retrieval_lexical_authority.json` | recall@3 10/70 (14.3%); preferred 3/46 |
-| retrieval · `semantic` | **pending**: needs `OPENAI_API_KEY` and embeddings | |
-| retrieval · `hybrid_rrf` | **pending**: needs `OPENAI_API_KEY` and embeddings | |
-| answer · `openai` · `semantic` | **pending**: needs `OPENAI_API_KEY`, plus human review | |
+| retrieval · `lexical` | `v0_retrieval_lexical.json` | recall@3 11/70 (15.7%); preferred 3/46 |
+| retrieval · `lexical_authority` | `v0_retrieval_lexical_authority.json` | recall@3 10/70 (14.3%); preferred 3/46 |
+| retrieval · `semantic` | `v0_retrieval_semantic.json` | recall@3 **58/70 (82.9%)**; preferred 23/46 |
+| retrieval · `hybrid_rrf` | `v0_retrieval_hybrid_rrf.json` | recall@3 48/70 (68.6%); preferred 18/46 |
+| answer · `openai` · `semantic` | `v0_answer_semantic_openai.json` | structural 23/33; **human review 12/33**; abstentions 7/10 |
+| answer · `openai` · `lexical` | `v0_answer_lexical_openai.json` | structural 12/33 (abstained on 26/33) |
 
-The lexical numbers are low because a few very long P&R chunks dominate `ts_rank_cd` ranking
-(see the 2026-11-05 audit spec). That is exactly the kind of finding a baseline should capture
-before any fix.
+V0 is complete. Analysis and recommendations: [../v0-baseline-rca.md](../v0-baseline-rca.md).
+Human review (AI first pass, pending confirmation): [v0-answer-review.md](v0-answer-review.md).
 
-### Completing V0 (about 10–15 minutes, well under US$1 of OpenAI usage)
+## Recording V1 (after the 2026-11-06 fixes)
+
+The corpus was reprocessed (extractor v7 + errata), which **deleted all embeddings**. Re-embed
+before any semantic, hybrid or e2e run:
+
+```bash
+bash scripts/run-workshop.sh --with-embeddings     # migrations, reprocess, re-embed (~US$0.01)
+
+# Production pipeline first, then diagnostics.
+uv run python -m apps.worker run-suite retrieval  --strategy semantic --confirm-paid --baseline v1
+uv run python -m apps.worker run-suite generation --provider openai   --confirm-paid --baseline v1
+uv run python -m apps.worker run-suite answer     --provider openai   --confirm-paid --baseline v1
+for st in lexical lexical_authority hybrid_rrf; do
+  uv run python -m apps.worker run-suite retrieval --strategy $st --confirm-paid --baseline v1
+done
+
+# Compare with V0 (fixtures and corpus changed, so expect drift warnings; shared cases only).
+uv run python -m apps.worker compare-runs v0_retrieval_semantic.json v1_retrieval_semantic.json
+uv run python -m apps.worker compare-runs v0_answer_semantic_openai.json v1_answer_semantic_openai.json
+
+# Human review forms (answers shown exactly as users see them, caveats included).
+uv run python scripts/answer-review-form.py v1_generation_fixed_context_openai.json
+uv run python scripts/answer-review-form.py v1_answer_semantic_openai.json
+```
+
+Things to watch when comparing:
+
+- **e2e vs generation.** The generation suite has no V0. Its first run *is* its baseline.
+  Failures there are answer-mechanism problems regardless of retrieval.
+- **`unsafe_answers` and `validation_rejections`.** A rejection is the figure check blocking an
+  answer; read the `validation_error` of each.
+- **Attribution.** To attribute the e2e change to top-5 context versus the other fixes, repeat
+  the e2e run with `TAXRAG_ANSWER_TOP_K=3` (label it, e.g., `v1-k3`).
+
+### How V0 was recorded (repeat this procedure for later baselines)
 
 ```bash
 # 1. Put OPENAI_API_KEY in .env, then prepare the corpus including embeddings.

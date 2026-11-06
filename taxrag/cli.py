@@ -158,7 +158,9 @@ def main() -> None:
         "answer", help="Retrieve official evidence and return a citation-validated answer"
     )
     answer_parser.add_argument("question")
-    answer_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="semantic")
+    answer_parser.add_argument(
+        "--strategy", choices=SUPPORTED_STRATEGIES, default=settings.answer_strategy
+    )
     answer_parser.add_argument("--provider", choices=("openai", "fake"), default="openai")
     answer_parser.add_argument(
         "--debug",
@@ -172,8 +174,17 @@ def main() -> None:
         "run-suite",
         help="Run a suite exactly like the Eval Workshop and save a JSON artifact in var/eval-runs/",
     )
-    run_parser.add_argument("suite", choices=("retrieval", "answer"))
-    run_parser.add_argument("--strategy", choices=SUPPORTED_STRATEGIES, default="lexical")
+    run_parser.add_argument(
+        "suite",
+        choices=("retrieval", "generation", "answer"),
+        help="retrieval = chunks only; generation = answers from fixed evidence; answer = end-to-end",
+    )
+    run_parser.add_argument(
+        "--strategy",
+        choices=SUPPORTED_STRATEGIES,
+        default=settings.answer_strategy,
+        help=f"default: the production pipeline ({settings.answer_strategy}); others are diagnostics",
+    )
     run_parser.add_argument("--provider", choices=("fake", "openai"), default="fake")
     run_parser.add_argument(
         "--confirm-paid",
@@ -200,6 +211,7 @@ def main() -> None:
     requires_embeddings = args.command == "embed-source" or (
         args.command in {"search", "eval-retrieval", "eval-answers", "answer", "run-suite"}
         and args.strategy in {"semantic", "hybrid_rrf"}
+        and getattr(args, "suite", None) != "generation"
     )
     if requires_embeddings and not settings.openai_api_key:
         parser.error(

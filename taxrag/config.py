@@ -36,6 +36,8 @@ class Settings:
     embedding_model: str
     embedding_dimensions: int
     answer_model: str
+    answer_strategy: str
+    answer_top_k: int
 
 
 settings = Settings(
@@ -49,4 +51,10 @@ settings = Settings(
     # A different size requires an explicit schema/model migration, not an env toggle.
     embedding_dimensions=EMBEDDING_DIMENSIONS,
     answer_model=os.getenv("TAXRAG_ANSWER_MODEL", "gpt-4.1-mini"),
+    # The one production retrieval pipeline that answers users and that optimisation targets.
+    # Other strategies remain available as diagnostics (see docs/evals/README.md).
+    answer_strategy=os.getenv("TAXRAG_ANSWER_STRATEGY", "semantic"),
+    # Evidence chunks given to the answer model. V0 used 3; every answerable V0 failure had no
+    # acceptable chunk in those 3. Override to run ablations (e.g. TAXRAG_ANSWER_TOP_K=3).
+    answer_top_k=int(os.getenv("TAXRAG_ANSWER_TOP_K", "5")),
 )

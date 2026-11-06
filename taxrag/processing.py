@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from taxrag.config import settings
+from taxrag.errata import errata_fingerprint, excluded_anchor_keys
 from taxrag.extraction import (
     EXTRACTOR_NAME,
     EXTRACTOR_VERSION,
@@ -54,7 +55,7 @@ def process_latest_source_version(session: Session, source_key: str) -> Processi
     existing_document = session.scalar(
         select(ExtractedDocument).where(ExtractedDocument.source_version_id == source_version.id)
     )
-    if existing_document is not None and existing_document.extractor_version == EXTRACTOR_VERSION:
+    if existing_document is not None and existing_document.extractor_version == processing_version():
         chunk_count = session.query(Chunk).filter(Chunk.source_version_id == source_version.id).count()
         return ProcessingResult("unchanged", str(source_version.id), chunk_count)
 
@@ -78,10 +79,12 @@ def process_latest_source_version(session: Session, source_key: str) -> Processi
         source = session.get(Source, source_version.source_id)
         if source is None:
             raise ValueError(f"Source version {source_version.id} has no source")
-        _persist_extraction(session, source_version, source.title, extraction)
+        chunk_count = _persist_extraction(
+            session, source_version, source.title, extraction, excluded_anchor_keys(source.source_key)
+        )
         source_version.processing_status = "processed"
         session.commit()
-        return ProcessingResult("created", str(source_version.id), len(extraction.sections))
+        return ProcessingResult("created", str(source_version.id), chunk_count)
     except Exception:
         # Restore a usable transaction before recording the failed processing status.
         session.rollback()
@@ -101,21 +104,35 @@ def _extract(document_family: str, raw_content: bytes) -> ExtractionResult:
     raise ValueError(f"No extraction adapter exists for document family {document_family}")
 
 
+def processing_version() -> str:
+    """Extractor version plus errata fingerprint; either changing forces a reprocess."""
+    return f"{EXTRACTOR_VERSION}+errata.{errata_fingerprint()}"
+
+
 def _persist_extraction(
-    session: Session, source_version: SourceVersion, source_title: str, extraction: ExtractionResult
-) -> None:
+    session: Session,
+    source_version: SourceVersion,
+    source_title: str,
+    extraction: ExtractionResult,
+    excluded: frozenset[str] = frozenset(),
+) -> int:
     """Save normalized text, citation anchors, and one section-preserving chunk per anchor."""
     session.add(
         ExtractedDocument(
             source_version_id=source_version.id,
             normalized_text=extraction.normalized_text,
             extractor_name=EXTRACTOR_NAME,
-            extractor_version=EXTRACTOR_VERSION,
+            extractor_version=processing_version(),
         )
     )
     session.flush()
 
+    chunk_count = 0
     for section in extraction.sections:
+        if section.anchor_key in excluded:
+            # Known-wrong official passage (data/source-errata.json): kept in the normalized
+            # document for provenance, never indexed or offered as citation evidence.
+            continue
         anchor = SourceAnchor(
             source_version_id=source_version.id,
             anchor_key=section.anchor_key,
@@ -145,3 +162,5 @@ def _persist_extraction(
                 character_count=len(section.display_title) + 1 + len(section.text),
             )
         )
+        chunk_count += 1
+    return chunk_count

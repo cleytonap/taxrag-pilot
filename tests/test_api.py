@@ -10,7 +10,7 @@ def test_eval_manager_lists_the_known_fixture_suites() -> None:
     response = TestClient(app).get("/api/evals/suites")
 
     assert response.status_code == 200
-    assert [suite["id"] for suite in response.json()["suites"]] == ["retrieval", "answer"]
+    assert [suite["id"] for suite in response.json()["suites"]] == ["retrieval", "generation", "answer"]
 
 
 def test_debug_openai_requires_an_explicit_paid_confirmation() -> None:

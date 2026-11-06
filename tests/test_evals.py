@@ -39,6 +39,7 @@ def _fake_chunk(anchor_key: str, **overrides: object) -> SimpleNamespace:
         "source_title": "Official source",
         "source_link": "https://example.test",
         "chunk_text": "evidence",
+        "score": 1.0,
     }
     return SimpleNamespace(**{**fields, **overrides})
 ANSWER_FIXTURE_PATH = Path("docs/evals/cited-answer-development.jsonl")
@@ -47,7 +48,7 @@ ANSWER_FIXTURE_PATH = Path("docs/evals/cited-answer-development.jsonl")
 def test_lexical_retrieval_fixture_has_unique_cases_and_valid_anchor_sets() -> None:
     cases = load_retrieval_eval_cases(FIXTURE_PATH)
 
-    assert len(cases) == 70
+    assert len(cases) == 69
     assert len({case.case_id for case in cases}) == len(cases)
     assert all(case.question and case.acceptable_anchor_keys for case in cases)
     assert all(set(case.preferred_anchor_keys) <= set(case.acceptable_anchor_keys) for case in cases)
@@ -65,7 +66,6 @@ def test_fixtures_keep_their_edge_case_categories() -> None:
         "keyword-only",
         "long-noisy",
         "boundary-value",
-        "cross-lingual",
         "other-year",
         "scope-boundary",
         "stale-source-conflict",
@@ -85,7 +85,7 @@ def test_fixtures_keep_their_edge_case_categories() -> None:
         "stale-source-conflict",
         "scope-boundary",
         "prompt-injection",
-        "cross-lingual",
+        "unsupported-language",
         "missing-source",
     }
 

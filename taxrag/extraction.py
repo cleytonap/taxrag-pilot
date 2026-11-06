@@ -10,7 +10,7 @@ import pymupdf
 from bs4 import BeautifulSoup, Tag
 
 EXTRACTOR_NAME = "source-family-extractors"
-EXTRACTOR_VERSION = "6"
+EXTRACTOR_VERSION = "7"
 
 
 @dataclass(frozen=True)
@@ -67,6 +67,21 @@ def extract_receita_guidance_html(html: bytes) -> ExtractionResult:
     _append_section(sections, current_title, current_blocks)
     if not sections:
         raise ValueError("Receita guidance HTML did not produce any text sections")
+    # Sections such as "Você está obrigado se:" only make sense under the page title; index them
+    # with it (citation text is unchanged).
+    page_title = _text(page_heading)
+    sections = [
+        section
+        if section.display_title == page_title
+        else ExtractedSection(
+            anchor_key=section.anchor_key,
+            display_title=section.display_title,
+            ordinal=section.ordinal,
+            text=section.text,
+            search_text=f"{page_title}\n{section.text}",
+        )
+        for section in sections
+    ]
 
     normalized_text = "\n\n".join(f"{section.display_title}\n{section.text}" for section in sections)
     return ExtractionResult(normalized_text=normalized_text, sections=sections)
@@ -139,9 +154,11 @@ def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
                 display_title=label,
                 ordinal=len(sections) + 1,
                 text="\n".join(context),
-                # Citation text retains inherited legal context. Search text must not:
-                # otherwise every inciso matches the repeated article caput equally.
-                search_text="\n".join(current_inciso_blocks),
+                # v7: the indexed text keeps the legal lead-in. Without it an inciso such as
+                # "V - relativamente à atividade rural: ... receita bruta ..." loses its meaning
+                # ("está obrigada a apresentar") for embeddings; length-normalised lexical
+                # ranking no longer needs the caput stripped (see 2026-11-06 spec).
+                search_text="\n".join(context),
             )
         )
 
@@ -180,11 +197,21 @@ def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
 
     append_inciso()
 
-    # --- Arts. 1 and 3–14: one chunk per article ---
+    chapters = _chapter_headings(paragraphs)
+    if 2 in chapters:
+        sections[0] = ExtractedSection(
+            anchor_key=sections[0].anchor_key,
+            display_title=sections[0].display_title,
+            ordinal=sections[0].ordinal,
+            text=sections[0].text,
+            search_text=f"{chapters[2]}\n{sections[0].text}",
+        )
+
+    # --- Arts. 1 and 3–17: one chunk per article ---
     # Walk from the beginning of the paragraph list to collect Art. 1, then from
     # the end of Art. 2 onwards for Arts. 3–14. Articles are stored in source order.
-    _collect_whole_articles(paragraphs, sections, start=0, end=article_index)
-    _collect_whole_articles(paragraphs, sections, start=art2_end_index - 1, end=len(paragraphs))
+    _collect_whole_articles(paragraphs, sections, 0, article_index, chapters)
+    _collect_whole_articles(paragraphs, sections, art2_end_index - 1, len(paragraphs), chapters)
 
     # Re-sort by temporary ordinal, then assign unique contiguous values required
     # by the database's per-source uniqueness constraints.
@@ -206,18 +233,45 @@ def extract_dou_in_rfb_2312_html(html: bytes) -> ExtractionResult:
     return ExtractionResult(normalized_text=normalized_text, sections=sections)
 
 
+DOU_CHAPTER = re.compile(r"^CAP[ÍI]TULO\s+[IVXLC]+$")
+
+
+def _chapter_headings(paragraphs: list[str]) -> dict[int, str]:
+    """Map each article number to the chapter heading printed immediately before it.
+
+    In the DOU HTML a chapter marker ("CAPÍTULO X") and its title are separate paragraphs
+    placed after the previous article. They describe the *next* article, so they are used as
+    that article's retrieval context and excluded from the previous article's text.
+    """
+    headings: dict[int, str] = {}
+    pending: str | None = None
+    for index, text in enumerate(paragraphs):
+        if DOU_CHAPTER.match(text):
+            title = paragraphs[index + 1] if index + 1 < len(paragraphs) else ""
+            pending = f"{text} - {title}" if title and not DOU_ARTICLE.match(title) else text
+            continue
+        article = DOU_ARTICLE.match(text)
+        if article and pending:
+            headings[int(article.group("number"))] = pending
+            pending = None
+    return headings
+
+
 def _collect_whole_articles(
     paragraphs: list[str],
     sections: list[ExtractedSection],
     start: int,
     end: int,
+    chapters: dict[int, str],
 ) -> None:
     """Collect paragraphs between consecutive article markers as single-chunk sections.
 
-    Skips Art. 2, which is handled separately at inciso/parágrafo level.
+    Skips Art. 2, which is handled separately at inciso/parágrafo level, and chapter headings,
+    which belong to the following article's retrieval context.
     """
     current_number: int | None = None
     current_blocks: list[str] = []
+    skip_chapter_title = False
 
     def flush() -> None:
         if current_number is None or not current_blocks:
@@ -227,16 +281,25 @@ def _collect_whole_articles(
             return
         # Temporary sort keys place whole articles around Art. 2's finer-grained chunks.
         ordinal = 0 if current_number == 1 else 1000 + current_number
+        chapter = chapters.get(current_number)
         sections.append(
             ExtractedSection(
                 anchor_key=f"art-{current_number}-caput",
                 display_title=f"Art. {current_number}",
                 ordinal=ordinal,
                 text=text,
+                search_text=f"{chapter}\n{text}" if chapter else None,
             )
         )
 
     for text in paragraphs[start:end]:
+        if DOU_CHAPTER.match(text):
+            skip_chapter_title = True
+            continue
+        if skip_chapter_title:
+            skip_chapter_title = False
+            if not DOU_ARTICLE.match(text):
+                continue
         m = DOU_ARTICLE.match(text)
         if m:
             number = int(m.group("number"))
@@ -270,81 +333,100 @@ QUESTION_HEADER = re.compile(r"(?m)^(?P<number>\d{3})[ \t]*[—·–-][ \t]*(?P<
 def extract_receita_questions_answers_pdf(pdf: bytes) -> ExtractionResult:
     """Extract all IRPF questions from the official Perguntas e Respostas PDF with page provenance.
 
-    The P&R manual contains 700+ numbered questions covering every IRPF topic. Each question
-    becomes one anchor-keyed chunk. The anchor key embeds the question number and the page it
-    starts on so citations are verifiable in the original PDF.
+    The P&R manual contains 745 numbered questions covering every IRPF topic. Each question
+    becomes one anchor-keyed chunk whose key embeds the question number and start page, so
+    citations are verifiable in the original PDF.
+
+    Layout handled explicitly (extractor v7):
+    - Each answer ends with a "Retorno ao sumário" link. Section headings printed after that link
+      (e.g. "PRÊMIOS EM DINHEIRO – LOTERIAS DE APOSTAS DE QUOTA FIXA (BETS)") describe the *next*
+      question. They become that question's retrieval context instead of polluting the previous
+      answer.
+    - Question titles often wrap onto several lines; the full title is kept in the display title.
+    - Page numbers (first line of each page) and the navigation link are dropped from the text.
     """
     document = pymupdf.open(stream=pdf, filetype="pdf")
     sections: list[ExtractedSection] = []
-    current_number: int | None = None
-    current_title = ""
-    current_blocks: list[str] = []
-    page_start: int | None = None
-    page_end: int | None = None
+    question: dict[str, object] | None = None
+    pending_heading: list[str] = []
+    answer_closed = False
+
+    def finish() -> None:
+        if question is not None:
+            _append_pdf_question(sections, question)
 
     for page in document:
         page_number = page.number + 1
-        page_text = _normalize_pdf_text(page.get_text())
-        matches = list(QUESTION_HEADER.finditer(page_text))
-        if not matches:
-            if current_number is not None:
-                current_blocks.append(page_text)
-                page_end = page_number
-            continue
+        lines = _normalize_pdf_text(page.get_text()).splitlines()
+        if lines and lines[0] == str(page_number):
+            lines = lines[1:]
+        if question is None:
+            # Before the first question, only the headings on its own page describe it (earlier
+            # pages are the table of contents).
+            pending_heading = []
+            answer_closed = True
+        index = 0
+        while index < len(lines):
+            line = lines[index]
+            header = QUESTION_HEADER.match(line)
+            if header:
+                finish()
+                title = [_normalize_pdf_text(header.group("title"))]
+                index += 1
+                # Consume wrapped title lines up to the question mark (bounded, so a title
+                # without "?" never swallows the answer).
+                if not title[0].endswith("?"):
+                    lookahead = lines[index : index + 8]
+                    end = next(
+                        (offset for offset, item in enumerate(lookahead) if item.endswith("?")),
+                        None,
+                    )
+                    if end is not None:
+                        title.extend(lookahead[: end + 1])
+                        index += end + 1
+                question = {
+                    "number": int(header.group("number")),
+                    "title": " ".join(title),
+                    "heading": " / ".join(pending_heading),
+                    "lines": [],
+                    "page_start": page_number,
+                    "page_end": page_number,
+                }
+                pending_heading = []
+                answer_closed = False
+                continue
+            if line == "Retorno ao sumário":
+                answer_closed = True
+            elif answer_closed:
+                pending_heading.append(line)
+            elif question is not None:
+                question["lines"].append(line)  # type: ignore[union-attr]
+                question["page_end"] = page_number
+            index += 1
 
-        cursor = 0
-        for match in matches:
-            question_number = int(match.group("number"))
-            before_question = page_text[cursor : match.start()].strip()
-            if current_number is not None and before_question:
-                current_blocks.append(before_question)
-                page_end = page_number
-
-            _append_pdf_question(
-                sections,
-                current_number,
-                current_title,
-                current_blocks,
-                page_start,
-                page_end,
-            )
-            current_number = question_number
-            current_title = _normalize_pdf_text(match.group("title"))
-            current_blocks = []
-            page_start = page_number
-            page_end = page_number
-            cursor = match.end()
-
-        trailing_text = page_text[cursor:].strip()
-        if current_number is not None and trailing_text:
-            current_blocks.append(trailing_text)
-
-    _append_pdf_question(sections, current_number, current_title, current_blocks, page_start, page_end)
+    finish()
     return _pdf_result(sections)
 
 
-def _append_pdf_question(
-    sections: list[ExtractedSection],
-    question_number: int | None,
-    title: str,
-    blocks: list[str],
-    page_start: int | None,
-    page_end: int | None,
-) -> None:
+def _append_pdf_question(sections: list[ExtractedSection], question: dict[str, object]) -> None:
     """Persist one completed numbered PDF question as a page-aware extraction section."""
-    if question_number is None:
-        return
-    text = "\n\n".join(block for block in blocks if block).strip()
+    text = "\n".join(question["lines"]).strip()  # type: ignore[arg-type]
     if not text:
         return
+    number = question["number"]
+    heading = question["heading"]
+    title = f"Question {number:03d}: {question['title']}"
     sections.append(
         ExtractedSection(
-            anchor_key=f"question-{question_number:03d}--p{page_start}",
-            display_title=f"Question {question_number:03d}: {title}",
+            anchor_key=f"question-{number:03d}--p{question['page_start']}",
+            display_title=title,
             ordinal=len(sections) + 1,
             text=text,
-            page_start=page_start,
-            page_end=page_end,
+            page_start=question["page_start"],  # type: ignore[arg-type]
+            page_end=question["page_end"],  # type: ignore[arg-type]
+            # Retrieval context: the manual's own topic heading for this question. The title is
+            # added to the indexed text by processing, so it is not repeated here.
+            search_text=f"{heading}\n{text}" if heading else None,
         )
     )
 

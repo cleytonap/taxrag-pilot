@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import quote
@@ -13,7 +14,8 @@ from sqlalchemy.orm import Session
 from taxrag.config import settings
 from taxrag.embeddings import EmbeddingProvider, configured_embedding_provider
 
-RetrievalStrategy = Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf"]
+# "fixed_context" labels evidence chosen by an eval case (answer-generation suite), not retrieved.
+RetrievalStrategy = Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf", "fixed_context"]
 SUPPORTED_STRATEGIES = ("lexical", "lexical_authority", "semantic", "hybrid_rrf")
 RRF_CANDIDATE_LIMIT = 20
 RRF_DAMPING_CONSTANT = 60
@@ -158,7 +160,10 @@ def _search_lexical_chunks(
     session: Session, question: str, limit: int, strategy: RetrievalStrategy
 ) -> list[RetrievedChunk]:
     """Run pure lexical rank or the separately named authority-adjusted experiment."""
-    lexical_expression = "ts_rank_cd(to_tsvector('portuguese', c.search_text), search_query.value)"
+    # ts_rank with normalisation 1 (divide by 1 + log(document length)). The V0 baseline used
+    # unnormalised ts_rank_cd, which let five very long P&R chunks fill 124 of 210 top-3 slots
+    # (lexical recall@3 11/70); normalised ranking scored 49/70 on the same corpus.
+    lexical_expression = "ts_rank(c.search_vector, search_query.value, 1)"
     score_expression = (
         f"{lexical_expression} * ({AUTHORITY_SCORE_CASE})"
         if strategy == "lexical_authority"
@@ -190,7 +195,7 @@ def _search_lexical_chunks(
         CROSS JOIN search_query
         WHERE s.is_active
           AND sv.processing_status = 'processed'
-          AND to_tsvector('portuguese', c.search_text) @@ search_query.value
+          AND c.search_vector @@ search_query.value
         ORDER BY score DESC, lexical_score DESC, c.ordinal ASC
         LIMIT :limit
         """
@@ -275,4 +280,54 @@ def _search_semantic_chunks(
             page_start=row["page_start"],
         )
         for row in rows
+    ]
+
+
+def fetch_chunks_by_anchor_keys(session: Session, anchor_keys: Sequence[str]) -> list[RetrievedChunk]:
+    """Load active chunks for explicit anchors, in the given order, for fixed-context evals.
+
+    Raises when an anchor has no active chunk (e.g. excluded by source errata or not yet
+    processed), because a silently shorter context would change what the case tests.
+    """
+    query = text(
+        """
+        SELECT
+            c.id::text AS chunk_id,
+            a.anchor_key,
+            a.display_title AS anchor_title,
+            c.text AS chunk_text,
+            s.title AS source_title,
+            s.canonical_url,
+            s.authority_level,
+            a.page_start
+        FROM chunks AS c
+        JOIN source_anchors AS a ON a.id = c.source_anchor_id
+        JOIN source_versions AS sv ON sv.id = c.source_version_id
+        JOIN sources AS s ON s.id = sv.source_id
+        WHERE s.is_active
+          AND sv.processing_status = 'processed'
+          AND a.anchor_key IN :anchor_keys
+        """
+    ).bindparams(bindparam("anchor_keys", expanding=True))
+    rows = {
+        row["anchor_key"]: row
+        for row in session.execute(query, {"anchor_keys": list(anchor_keys)}).mappings()
+    }
+    missing = [key for key in anchor_keys if key not in rows]
+    if missing:
+        raise ValueError(f"No active indexed chunk for context anchors: {', '.join(missing)}")
+    return [
+        RetrievedChunk(
+            chunk_id=rows[key]["chunk_id"],
+            anchor_key=key,
+            anchor_title=rows[key]["anchor_title"],
+            chunk_text=rows[key]["chunk_text"],
+            source_title=rows[key]["source_title"],
+            canonical_url=rows[key]["canonical_url"],
+            authority_level=rows[key]["authority_level"],
+            strategy="fixed_context",
+            score=0.0,
+            page_start=rows[key]["page_start"],
+        )
+        for key in anchor_keys
     ]

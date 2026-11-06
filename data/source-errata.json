@@ -1,0 +1,19 @@
+{
+  "_about": "Official passages known to contradict the controlling norm. Listed sections are kept in the extracted document (provenance) but are NOT indexed, embedded or citable. Each entry needs the conflicting text, the controlling text, and who found it. Review on every new source version: an entry whose anchor no longer exists fails the tests.",
+  "irpf-2026-perguntas-respostas": [
+    {
+      "anchor_key": "question-088--p53",
+      "reason": "Stale threshold for the spouse/common-assets dispensation.",
+      "conflicting_text": "posse ou à propriedade de bens e direitos, inclusive terra nua, de valor total superior a R$ 300.000,00 (trezentos mil reais)",
+      "controlling_text": "IN RFB 2.312/2026, art. 2º, § 1º, I, and art. 2º, VI: R$ 800.000,00 (also P&R question 001).",
+      "identified": "2026-11-05 retrieval eval audit; confirmed by corpus scan 2026-11-06"
+    },
+    {
+      "anchor_key": "question-066--p46",
+      "reason": "Stale year in the automatic-debit window for returns filed after 10 May.",
+      "conflicting_text": "entre 11 e 31 de maio de 2024, para débitos a partir da 2ª quota",
+      "controlling_text": "IN RFB 2.312/2026, art. 12, § 3º, I, b: between 11 May 2026 and the last day of the art. 7 deadline (29 May 2026).",
+      "identified": "2026-11-05 retrieval eval audit; confirmed by corpus scan 2026-11-06"
+    }
+  ]
+}

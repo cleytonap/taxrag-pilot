@@ -54,7 +54,9 @@ to rerun. On first run it creates `.env` from `.env.example`. Logs: `var/logs/ev
 
 Using it:
 
-- **Suites & cases:** pick a suite and a strategy, then press **Run suite**. Runs happen in the
+- **Suites & cases:** three suites. *Retrieval* (chunks only), *Answer generation* (answers from
+  fixed evidence, isolating the answer mechanism) and *End-to-end answers* (the production
+  pipeline). Pick a suite (and strategy/provider), then press **Run suite**. Runs happen in the
   background with a live progress counter (a lexical run takes about 40 s, an OpenAI answer run a
   few minutes). Semantic, hybrid and OpenAI runs require ticking the cost confirmation.
 - **Run archive:** every run is saved to `var/eval-runs/` (local, gitignored). Open a run to see its

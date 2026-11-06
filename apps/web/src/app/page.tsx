@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import styles from "./page.module.css";
 
-type EvalCase = { case_id: string; question: string; acceptable_anchor_keys: string[]; preferred_anchor_keys?: string[]; expected_abstain?: boolean; human_review_criteria?: string[] };
-type Suite = { id: "retrieval" | "answer"; label: string; path: string; case_count: number; cases: EvalCase[] };
+type EvalCase = { case_id: string; question: string; context_anchor_keys?: string[]; acceptable_anchor_keys: string[]; preferred_anchor_keys?: string[]; expected_abstain?: boolean; human_review_criteria?: string[] };
+type Suite = { id: "retrieval" | "generation" | "answer"; label: string; path: string; case_count: number; cases: EvalCase[] };
 type Fixture = { id: Suite["id"]; path: string; content: string; sha256: string; cases: EvalCase[] };
 type Artifact = { name: string; kind?: "run" | "baseline"; size_bytes: number; modified_at: number; format: string };
 type Evidence = { rank?: number; chunk_id: string; anchor_key: string; anchor_title: string; source_title: string; source_link: string; score?: number; excerpt: string };
@@ -86,7 +86,7 @@ export default function Home() {
   async function runSelectedSuite() {
     setBusy(true); setSuiteOutcome(null);
     try {
-      let job = await api<RunJob>(`/api/evals/suites/${selectedSuite}/jobs`, { method: "POST", body: JSON.stringify({ strategy: suiteStrategy, provider: selectedSuite === "answer" ? suiteProvider : "fake", confirm_paid_request: confirmSuitePaid }) });
+      let job = await api<RunJob>(`/api/evals/suites/${selectedSuite}/jobs`, { method: "POST", body: JSON.stringify({ strategy: suiteStrategy, provider: selectedSuite === "retrieval" ? "fake" : suiteProvider, confirm_paid_request: confirmSuitePaid }) });
       // Poll with short requests; a long run never depends on one HTTP request staying open.
       while (job.status === "running") {
         setNotice(`Running ${selectedSuite} suite (${suiteStrategy})… ${job.completed}/${job.total ?? "?"} cases. You can keep this tab open; the run continues on the API.`);
@@ -129,14 +129,17 @@ export default function Home() {
   }
   async function addDiagnosticCase() {
     if (!fixture || !debugResult) return;
-    const anchors = expectedAbstain && selectedSuite === "answer" ? [] : selectedAnchors;
+    const answerSuite = selectedSuite !== "retrieval";
+    const anchors = expectedAbstain && answerSuite ? [] : selectedAnchors;
     if (selectedSuite === "retrieval" && anchors.length === 0) { setNotice("Select at least one acceptable anchor before saving this retrieval case."); return; }
-    if (selectedSuite === "answer" && !expectedAbstain && anchors.length === 0) { setNotice("Select an acceptable anchor, or mark expected abstention."); return; }
-    const prefix = selectedSuite === "retrieval" ? "lex" : "answer";
+    if (answerSuite && !expectedAbstain && anchors.length === 0) { setNotice("Select an acceptable anchor, or mark expected abstention."); return; }
+    const prefix = { retrieval: "lex", generation: "gen", answer: "answer" }[selectedSuite];
     const nextNumber = Math.max(0, ...fixture.cases.map((item) => Number(item.case_id.match(/(\d+)$/)?.[1] ?? 0))) + 1;
     const record: Record<string, unknown> = { id: `${prefix}-${String(nextNumber).padStart(3, "0")}`, question: question.trim(), acceptable_anchor_keys: anchors };
     if (selectedSuite === "retrieval") record.preferred_anchor_keys = preferredAnchor && anchors.includes(preferredAnchor) ? [preferredAnchor] : [];
     else {
+      // A generation case freezes the diagnostic's retrieved chunks as its fixed evidence.
+      if (selectedSuite === "generation") record.context_anchor_keys = debugResult.retrieved_chunks.map((chunk) => chunk.anchor_key);
       const criteria = reviewCriteria.split("\n").map((item) => item.trim()).filter(Boolean);
       if (criteria.length === 0) { setNotice("Add at least one human review criterion for an answer case."); return; }
       record.expected_abstain = expectedAbstain; record.human_review_criteria = criteria;
@@ -157,7 +160,7 @@ export default function Home() {
     setLoadAttempt((attempt) => attempt + 1);
   }
 
-  const suiteNeedsPaidRequest = suiteStrategy === "semantic" || suiteStrategy === "hybrid_rrf" || (selectedSuite === "answer" && suiteProvider === "openai");
+  const suiteNeedsPaidRequest = (selectedSuite !== "generation" && (suiteStrategy === "semantic" || suiteStrategy === "hybrid_rrf")) || (selectedSuite !== "retrieval" && suiteProvider === "openai");
   const questionNeedsPaidRequest = strategy === "semantic" || strategy === "hybrid_rrf" || provider === "openai";
   const activeSuite = suites.find((item) => item.id === selectedSuite);
 
@@ -169,12 +172,12 @@ export default function Home() {
       <aside className={styles.sidebar}><h2>Versioned suites</h2>{suites.map((suite) => <button key={suite.id} className={selectedSuite === suite.id ? styles.suiteSelected : styles.suite} onClick={() => changeSuite(suite.id)}><strong>{suite.label}</strong><span>{suite.case_count} cases</span><small>{suite.path}</small></button>)}</aside>
       <div className={styles.editor}>
         <div className={styles.sectionTitle}><div><p className={styles.eyebrow}>Run and review</p><h2>{activeSuite?.label ?? "Evaluation suite"}</h2><small>{fixture?.path}</small></div><button className={styles.primary} disabled={busy || !fixture || (suiteNeedsPaidRequest && !confirmSuitePaid)} onClick={runSelectedSuite}>{busy ? "Running suite…" : "Run suite"}</button></div>
-        <div className={styles.runControls}><label>Retrieval strategy<select value={suiteStrategy} onChange={(event) => setSuiteStrategy(event.target.value)}><StrategyOptions /></select></label>{selectedSuite === "answer" && <label>Answer provider<select value={suiteProvider} onChange={(event) => setSuiteProvider(event.target.value)}><option value="fake">Deterministic fake (no API)</option><option value="openai">OpenAI (billable)</option></select></label>}</div>
+        <div className={styles.runControls}>{selectedSuite !== "generation" ? <label>Retrieval strategy<select value={suiteStrategy} onChange={(event) => setSuiteStrategy(event.target.value)}><StrategyOptions /></select></label> : <p>Evidence is fixed per case; retrieval is not used.</p>}{selectedSuite !== "retrieval" && <label>Answer provider<select value={suiteProvider} onChange={(event) => setSuiteProvider(event.target.value)}><option value="fake">Deterministic fake (no API)</option><option value="openai">OpenAI (billable)</option></select></label>}</div>
         {suiteNeedsPaidRequest && <label className={styles.consent}><input type="checkbox" checked={confirmSuitePaid} onChange={(event) => setConfirmSuitePaid(event.target.checked)} /> I confirm this may send official chunks to OpenAI and incur API cost.</label>}
         <p className={styles.warning}>Local only: saving fixtures changes Git-tracked JSONL. Runs are saved under <code>var/eval-runs/</code>.</p>
         {suiteOutcome && <SuiteResult result={suiteOutcome} onOpenArtifact={() => { setTab("archive"); void openArtifact(suiteOutcome.artifact_name); }} />}
         <details className={styles.fixtureDetails}><summary>Edit raw fixture JSONL</summary><div className={styles.sectionTitle}><span>Validate before saving</span><button className={styles.secondary} disabled={busy || !fixture} onClick={() => void saveFixture()}>Validate & save fixture</button></div><textarea aria-label="JSONL fixture" value={fixture?.content ?? ""} onChange={(event) => fixture && setFixture({ ...fixture, content: event.target.value })} /></details>
-        <h3>Cases ({fixture?.cases.length ?? 0})</h3><div className={styles.caseGrid}>{fixture?.cases.map((item) => <article key={item.case_id}><code>{item.case_id}</code><p>{item.question}</p><small>{item.acceptable_anchor_keys.join(" · ") || "No support anchors (expected abstention)"}</small></article>)}</div>
+        <h3>Cases ({fixture?.cases.length ?? 0})</h3><div className={styles.caseGrid}>{fixture?.cases.map((item) => <article key={item.case_id}><code>{item.case_id}</code><p>{item.question}</p>{item.context_anchor_keys?.length ? <small>Context: {item.context_anchor_keys.join(" · ")}</small> : null}<small>{item.acceptable_anchor_keys.length ? `${item.context_anchor_keys?.length ? "Must cite one of" : "Acceptable"}: ${item.acceptable_anchor_keys.join(" · ")}` : "No support anchors (expected abstention)"}</small></article>)}</div>
       </div>
     </section>}
     {tab === "archive" && <section className={styles.archive}><div><p className={styles.eyebrow}>Local history and Git-tracked baselines</p><h2>Saved runs</h2><p>Runs live in <code>var/eval-runs/</code> (local, not committed). Promote a run to a baseline to keep it in <code>docs/evals/baselines/</code> and compare later runs against it.</p></div><div className={styles.artifactList}>{artifacts.map((artifact) => <button key={artifact.name} className={artifact.name === archiveName ? styles.artifactSelected : ""} onClick={() => void openArtifact(artifact.name)}><strong>{artifact.kind === "baseline" ? "★ Baseline · " : ""}{artifact.name}</strong><span>{new Date(artifact.modified_at * 1000).toLocaleString()} · {Math.ceil(artifact.size_bytes / 1024)} KB</span></button>)}{artifacts.length === 0 && <p>No runs yet. Run a suite from “Suites & cases”.</p>}</div>
@@ -185,14 +188,15 @@ export default function Home() {
       {archiveRun && <SuiteResult result={archiveRun} onOpenArtifact={() => undefined} showOpen={false} />}
       <details className={styles.fixtureDetails}><summary>Raw JSON</summary><pre className={styles.artifactContent}>{artifactContent || "Select a saved run to inspect its complete JSON artifact."}</pre></details></section>}
     {tab === "question" && <section className={styles.questionLab}><div><p className={styles.eyebrow}>One explicit run</p><h2>Question lab</h2><p>Run a diagnostic, inspect evidence, then add the query to a suite without retyping it.</p></div><form onSubmit={submitQuestion} className={styles.questionForm}><label>Question<textarea value={question} onChange={(event) => setQuestion(event.target.value)} /></label><div className={styles.runControls}><label>Retrieval strategy<select value={strategy} onChange={(event) => setStrategy(event.target.value)}><StrategyOptions /></select></label><label>Answer provider<select value={provider} onChange={(event) => setProvider(event.target.value)}><option value="fake">Deterministic fake (no API call)</option><option value="openai">OpenAI (billable)</option></select></label></div>{questionNeedsPaidRequest && <label className={styles.consent}><input type="checkbox" checked={confirmPaid} onChange={(event) => setConfirmPaid(event.target.checked)} /> I understand the question and chunks may be sent to OpenAI and incur cost.</label>}<button className={styles.primary} disabled={busy || (questionNeedsPaidRequest && !confirmPaid)}>{busy ? "Running…" : "Run diagnostic"}</button></form>
-      {debugResult && <><DebugPanel result={debugResult} /><section className={styles.addCase}><p className={styles.eyebrow}>Add this query to a suite</p><h3>Turn diagnostic into a test case</h3><label>Target suite<select value={selectedSuite} onChange={(event) => changeSuite(event.target.value as Suite["id"])}><option value="retrieval">Lexical retrieval baseline</option><option value="answer">Cited-answer development</option></select></label>{selectedSuite === "answer" && <label className={styles.consent}><input type="checkbox" checked={expectedAbstain} onChange={(event) => setExpectedAbstain(event.target.checked)} /> Expect the answer provider to abstain</label>}
-        {!(selectedSuite === "answer" && expectedAbstain) && <div className={styles.anchorPicker}><strong>Select acceptable support chunks</strong>{debugResult.retrieved_chunks.map((chunk) => <label key={chunk.chunk_id}><input type="checkbox" checked={selectedAnchors.includes(chunk.anchor_key)} onChange={(event) => setSelectedAnchors((current) => event.target.checked ? [...new Set([...current, chunk.anchor_key])] : current.filter((key) => key !== chunk.anchor_key))} /><span>{chunk.anchor_key} · {chunk.anchor_title}</span></label>)}{debugResult.retrieved_chunks.length === 0 && <p>No chunks returned. Choose expected abstention for an answer case.</p>}</div>}
-        {selectedSuite === "retrieval" && <label>Preferred anchor (optional)<select value={preferredAnchor} onChange={(event) => setPreferredAnchor(event.target.value)}><option value="">No preferred source</option>{selectedAnchors.map((anchor) => <option key={anchor} value={anchor}>{anchor}</option>)}</select></label>}{selectedSuite === "answer" && <label>Human review criteria (one per line)<textarea value={reviewCriteria} onChange={(event) => setReviewCriteria(event.target.value)} placeholder="Directly answers the question.&#10;Uses an acceptable official citation." /></label>}<button className={styles.secondary} disabled={busy || !fixture} onClick={() => void addDiagnosticCase()}>Validate and add to {selectedSuite} suite</button></section></>}
+      {debugResult && <><DebugPanel result={debugResult} /><section className={styles.addCase}><p className={styles.eyebrow}>Add this query to a suite</p><h3>Turn diagnostic into a test case</h3><label>Target suite<select value={selectedSuite} onChange={(event) => changeSuite(event.target.value as Suite["id"])}><option value="retrieval">Retrieval (chunks only)</option><option value="generation">Answer generation (fixed evidence)</option><option value="answer">End-to-end answers</option></select></label>{selectedSuite !== "retrieval" && <label className={styles.consent}><input type="checkbox" checked={expectedAbstain} onChange={(event) => setExpectedAbstain(event.target.checked)} /> Expect the answer provider to abstain</label>}
+        {!(selectedSuite !== "retrieval" && expectedAbstain) && <div className={styles.anchorPicker}><strong>Select acceptable support chunks</strong>{debugResult.retrieved_chunks.map((chunk) => <label key={chunk.chunk_id}><input type="checkbox" checked={selectedAnchors.includes(chunk.anchor_key)} onChange={(event) => setSelectedAnchors((current) => event.target.checked ? [...new Set([...current, chunk.anchor_key])] : current.filter((key) => key !== chunk.anchor_key))} /><span>{chunk.anchor_key} · {chunk.anchor_title}</span></label>)}{debugResult.retrieved_chunks.length === 0 && <p>No chunks returned. Choose expected abstention for an answer case.</p>}</div>}
+        {selectedSuite === "retrieval" && <label>Preferred anchor (optional)<select value={preferredAnchor} onChange={(event) => setPreferredAnchor(event.target.value)}><option value="">No preferred source</option>{selectedAnchors.map((anchor) => <option key={anchor} value={anchor}>{anchor}</option>)}</select></label>}{selectedSuite !== "retrieval" && <label>Human review criteria (one per line)<textarea value={reviewCriteria} onChange={(event) => setReviewCriteria(event.target.value)} placeholder="Directly answers the question.&#10;Uses an acceptable official citation." /></label>}<button className={styles.secondary} disabled={busy || !fixture} onClick={() => void addDiagnosticCase()}>Validate and add to {selectedSuite} suite</button></section></>}
     </section>}
   </main>;
 }
 
-function StrategyOptions() { return <><option value="lexical">Lexical</option><option value="lexical_authority">Lexical + authority</option><option value="semantic">Semantic</option><option value="hybrid_rrf">Hybrid RRF</option></>; }
+// "Semantic" is the production pipeline (TAXRAG_ANSWER_STRATEGY); others are diagnostics.
+function StrategyOptions() { return <><option value="semantic">Semantic (production)</option><option value="lexical">Lexical (diagnostic)</option><option value="lexical_authority">Lexical + authority (diagnostic)</option><option value="hybrid_rrf">Hybrid RRF (diagnostic)</option></>; }
 
 function EvidenceList({ items }: { items: Evidence[] }) {
   return <div className={styles.evidence}>{items.map((item, index) => <details key={`${item.chunk_id}-${index}`}><summary>{item.rank ? `#${item.rank} ` : ""}{item.anchor_key}{item.score !== undefined && <span>score {item.score.toFixed(4)}</span>}</summary><p><a href={item.source_link} target="_blank" rel="noreferrer">Open {item.source_title} · {item.anchor_title}</a></p><p>{item.excerpt}</p></details>)}</div>;

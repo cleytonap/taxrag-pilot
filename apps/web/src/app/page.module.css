@@ -48,3 +48,4 @@
 .comparison h3 { margin: 0; }
 .tag, .edgeTag { margin-left: 8px; padding: 2px 7px; color: #173a35; background: #e2e8d2; border-radius: 10px; font-size: .72rem; font-weight: 700; }
 .edgeTag { color: #783d21; background: #fff0d7; }
+.caseGrid small { display: block; margin-top: 6px; }

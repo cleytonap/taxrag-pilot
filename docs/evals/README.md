@@ -6,6 +6,44 @@ TaxRAG evaluates the whole source-grounded answer path, not only an LLM response
 question -> retrieval -> source and anchor selection -> grounded answer -> citation validation
 ```
 
+## Three Eval Layers
+
+Each layer isolates one part of the pipeline. A failure is diagnosed at the lowest layer that
+shows it.
+
+| Suite (id) | File | Input | Measures | Runs |
+| --- | --- | --- | --- | --- |
+| Retrieval (`retrieval`) | `lexical-retrieval-baseline.jsonl` | question | whether an acceptable chunk is retrieved: recall@1/3/5/10, MRR, preferred-source recall | any strategy; no LLM |
+| Answer generation (`generation`) | `answer-generation.jsonl` | question + **fixed** chunks | answer behaviour with retrieval held constant: citations, abstention, grounding, human criteria | answer provider only |
+| End-to-end (`answer`) | `cited-answer-development.jsonl` | question | what the user gets from the production pipeline | production strategy + provider |
+
+How to read them together:
+
+- If e2e fails but generation passes, the cause is retrieval.
+- If generation fails, the cause is the answer mechanism (prompt, validation, gates), whatever
+  the retrieval.
+- Generation contexts include realistic distractors taken from real retrievals, so the suite
+  also tests resistance to misleading evidence.
+
+## Production Focus
+
+The product optimises **one** pipeline: `TAXRAG_ANSWER_STRATEGY` (default `semantic`). A change
+is accepted on its generation and e2e results. Retrieval metrics explain those results. The other
+retrieval strategies stay in the retrieval suite as diagnostics and references; they are not
+required to improve. Commands and the UI default to the production strategy. Citation text and
+indexed text are separate columns, so an indexing change never alters what a user sees cited.
+
+## Scope And Source Policy
+
+- **Portuguese only.** Questions confidently detected as another language receive a fixed
+  notice (outcome `unsupported_language`, a correct abstention in evals). The gate favours
+  precision: uncertain text is treated as Portuguese.
+- **Known-wrong official passages are excluded** from the index via `data/source-errata.json`.
+  Each entry quotes the conflicting text and the controlling norm; tests verify both. Fixtures
+  must never use an excluded anchor as evidence.
+- **Answers show their caveats.** `limitation` and `clarification_question` are part of the
+  user-visible answer and are graded in human review.
+
 ## Evaluation Sets
 
 ### Development Set
@@ -104,18 +142,20 @@ Where an edge case lives depends on what "correct" means for it:
 
 - **Retrieval suite (answerable, hard form).** A correct chunk exists, so recall can be scored.
   Categories: `typo-no-accents`, `keyword-only`, `long-noisy`, `boundary-value`,
-  `cross-lingual`, `other-year` (the guidance table maps each exercise to its norm),
+  `other-year` (the guidance table maps each exercise to its norm),
   `scope-boundary`, `stale-source-conflict` (the official P&R contains an outdated figure),
   `false-premise`, `multi-condition` (the decisive criterion must be retrieved, not just a
   related one).
 - **Answer suite (refuse, narrow, or correct).** Either no correct chunk exists, or the difficulty
   is in how the answer behaves. Expected abstention: `other-year`, `future-year`,
   `out-of-scope-tax`, `out-of-scope-jurisdiction`, `off-domain`, `prompt-injection`,
+  `unsupported-language` (fixed Portuguese-only notice), `insufficient-evidence` (generation
+  suite: in-scope question, context that does not answer it),
   `missing-source` (an IRPF topic absent from the corpus, which tests hallucination from model
   memory). Expected grounded answer: `calendar-vs-exercise`, `boundary-value`,
   `personalized-advice` (scope-limited, no computed amount), `false-premise` (correct the
   premise), `stale-source-conflict` (use the IN figure, never the stale P&R one), `scope-boundary`,
-  `cross-lingual`, `arithmetic`, `below-threshold`.
+  `arithmetic`, `below-threshold`.
 
 Known contract limitation: answer cases are scored as *answer* or *abstain* only. A genuinely
 ambiguous question (e.g. "IR 2025", which may mean exercise 2025 or calendar year 2025) should
@@ -123,6 +163,13 @@ ideally trigger a clarification question, which the binary contract cannot score
 excluded until the contract gains an explicit `clarify` outcome. Retrieval also has no "no-answer"
 metric yet. Once retrieval gets a confidence threshold, out-of-scope questions should be added
 there too, with the expectation that nothing is retrieved above the threshold.
+
+### Human Review Of Answer Runs
+
+Generate a review form from any generation or e2e run. It shows each answer exactly as the user
+sees it, with its citations:
+`uv run python scripts/answer-review-form.py <run-or-baseline>.json`.
+Review only changed cases when comparing against a reviewed baseline.
 
 ### Baselines
 
@@ -165,6 +212,9 @@ Target 40-60 cases after the source inventory is complete. Cover:
 - year/period accuracy: answer does not apply a rule to an unsupported exercise or calendar year
 
 ## Cited Answer Development Fixture
+
+This is the **end-to-end** suite (id `answer`). Its fixed-evidence counterpart is
+`answer-generation.jsonl` (id `generation`).
 
 `cited-answer-development.jsonl` is a small human-authored development fixture for the answer
 path. Each case contains acceptable official citation anchors, expected abstention, and a

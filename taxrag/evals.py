@@ -14,10 +14,17 @@ from taxrag.answers import (
     AnswerProvider,
     AnswerValidationError,
     CitedAnswer,
+    answer_from_evidence,
     answer_question,
+    unsupported_language_answer,
 )
 from taxrag.embeddings import EmbeddingProvider
-from taxrag.retrieval import RetrievalStrategy, RetrievedChunk, search_chunks
+from taxrag.retrieval import (
+    RetrievalStrategy,
+    RetrievedChunk,
+    fetch_chunks_by_anchor_keys,
+    search_chunks,
+)
 
 
 @dataclass(frozen=True)
@@ -87,10 +94,15 @@ class AnswerEvalResult:
 
     @property
     def abstention_matches(self) -> bool:
-        """Require an explicit provider abstention rather than treating a rejection as a pass."""
+        """Require a deliberate abstention (provider or language gate), not a validation rejection."""
         if self.expected_abstain:
-            return self.answer.outcome == "provider_abstained"
+            return self.answer.outcome in DELIBERATE_ABSTENTIONS
         return self.answer.outcome == "answered"
+
+    @property
+    def unsafe(self) -> bool:
+        """An answer was shown although the case expects abstention (worst outcome)."""
+        return self.expected_abstain and self.answer.outcome == "answered"
 
     @property
     def acceptable_support_present(self) -> bool:
@@ -114,6 +126,7 @@ class RetrievedEvidence:
     source_link: str = ""
     excerpt: str = ""
     rank: int | None = None
+    score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -162,6 +175,10 @@ def load_retrieval_eval_cases(path: Path) -> list[RetrievalEvalCase]:
 
 
 ANSWER_CASE_METADATA_KEYS = frozenset({"topic", "edge_case", "label_notes"})
+RETRIEVAL_EVAL_DEPTH = 10
+# Outcomes that count as the system deciding not to answer. "provider_rejected" is excluded: it
+# is a validation safety net firing, which must not make a failing model look compliant.
+DELIBERATE_ABSTENTIONS = frozenset({"provider_abstained", "unsupported_language"})
 
 
 def load_answer_eval_cases(path: Path) -> list[AnswerEvalCase]:
@@ -248,8 +265,14 @@ def run_retrieval_evals(
     for case in cases:
         if on_progress:
             on_progress(len(results), len(cases))
+        # Ranks up to 10 are recorded so recall@k curves and score thresholds can be studied;
+        # pass/fail remains recall@3.
         matches = search_chunks(
-            session, case.question, limit=3, strategy=strategy, embedding_provider=embedding_provider
+            session,
+            case.question,
+            limit=RETRIEVAL_EVAL_DEPTH,
+            strategy=strategy,
+            embedding_provider=embedding_provider,
         )
         acceptable_rank = _first_anchor_rank(matches, case.acceptable_anchor_keys)
         preferred_rank = _first_anchor_rank(matches, case.preferred_anchor_keys)
@@ -270,6 +293,7 @@ def run_retrieval_evals(
                         source_link=match.source_link,
                         excerpt=match.chunk_text,
                         rank=rank,
+                        score=match.score,
                     )
                     for rank, match in enumerate(matches, start=1)
                 ),
@@ -333,6 +357,119 @@ def run_answer_evals(
                 case,
                 answer,
                 trace=AnswerEvalTrace(retrieved_evidence, validation_error, rejected_draft),
+            )
+        )
+    return results
+
+
+@dataclass(frozen=True)
+class GenerationEvalCase(AnswerEvalCase):
+    """An answer case with fixed evidence, isolating generation from retrieval quality."""
+
+    context_anchor_keys: tuple[str, ...] = ()
+
+
+GENERATION_CASE_METADATA_KEYS = ANSWER_CASE_METADATA_KEYS | {"derived_from"}
+
+
+def load_generation_eval_cases(path: Path) -> list[GenerationEvalCase]:
+    """Load fixed-context answer cases; acceptable citations must be inside the given context."""
+    cases = []
+    for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        required = {
+            "id",
+            "question",
+            "context_anchor_keys",
+            "acceptable_anchor_keys",
+            "expected_abstain",
+            "human_review_criteria",
+        }
+        if not required <= set(record) or set(record) - required - GENERATION_CASE_METADATA_KEYS:
+            raise ValueError(
+                f"Generation fixture line {line_number} does not match the required contract"
+            )
+        case_id, question = record["id"], record["question"]
+        if not isinstance(case_id, str) or not case_id or not isinstance(question, str) or not question:
+            raise TypeError(f"Generation fixture line {line_number} has an invalid id or question")
+        expected_abstain = record["expected_abstain"]
+        if not isinstance(expected_abstain, bool):
+            raise TypeError(f"Generation fixture line {line_number} has invalid expected_abstain")
+        context = _load_anchor_keys(record["context_anchor_keys"], line_number, "context")
+        acceptable = _load_anchor_keys(
+            record["acceptable_anchor_keys"], line_number, "acceptable", allow_empty=expected_abstain
+        )
+        if expected_abstain and acceptable:
+            raise ValueError(
+                f"Generation fixture line {line_number} cannot declare support anchors for abstention"
+            )
+        if not set(acceptable) <= set(context):
+            raise ValueError(
+                f"Generation fixture line {line_number} has acceptable anchors outside its context"
+            )
+        criteria = _load_review_criteria(record["human_review_criteria"], line_number)
+        cases.append(
+            GenerationEvalCase(
+                case_id, question, acceptable, expected_abstain, criteria, context_anchor_keys=context
+            )
+        )
+    if not cases:
+        raise ValueError("Generation fixture contains no cases")
+    if len({case.case_id for case in cases}) != len(cases):
+        raise ValueError("Generation fixture contains duplicate case ids")
+    return cases
+
+
+def run_generation_evals(
+    session: Session,
+    cases: list[GenerationEvalCase],
+    provider: AnswerProvider,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> list[AnswerEvalResult]:
+    """Answer each case from its fixed context with the production answer code (no retrieval)."""
+    results = []
+    for case in cases:
+        if on_progress:
+            on_progress(len(results), len(cases))
+        chunks = fetch_chunks_by_anchor_keys(session, case.context_anchor_keys)
+        validation_error: str | None = None
+        rejected_draft: AnswerDraft | None = None
+
+        def record_rejection(
+            draft: AnswerDraft | None,
+            error: AnswerValidationError,
+            _chunks: Sequence[RetrievedChunk],
+        ) -> None:
+            nonlocal rejected_draft, validation_error
+            rejected_draft = draft
+            validation_error = str(error)
+
+        answer = unsupported_language_answer(
+            case.question, "fixed_context", provider.model
+        ) or answer_from_evidence(
+            case.question,
+            chunks,
+            provider,
+            strategy="fixed_context",
+            on_validation_failure=record_rejection,
+        )
+        evidence = tuple(
+            RetrievedEvidence(
+                chunk_id=chunk.chunk_id,
+                anchor_key=chunk.anchor_key,
+                anchor_title=chunk.anchor_title,
+                source_title=chunk.source_title,
+                source_link=chunk.source_link,
+                excerpt=chunk.chunk_text,
+                rank=rank,
+            )
+            for rank, chunk in enumerate(chunks, start=1)
+        )
+        results.append(
+            evaluate_answer(
+                case, answer, trace=AnswerEvalTrace(evidence, validation_error, rejected_draft)
             )
         )
     return results

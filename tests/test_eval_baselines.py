@@ -168,3 +168,81 @@ def test_answer_fixture_accepts_review_metadata_but_rejects_unknown_keys(tmp_pat
     typo.write_text(json.dumps({**base, "expected_abstian": False}) + "\n")
     with pytest.raises(ValueError, match="required contract"):
         load_answer_eval_cases(typo)
+
+
+def test_generation_fixture_contract_requires_citable_context(tmp_path: Path) -> None:
+    from taxrag.evals import load_generation_eval_cases
+
+    base = {
+        "id": "g",
+        "question": "q",
+        "context_anchor_keys": ["a", "b"],
+        "acceptable_anchor_keys": ["a"],
+        "expected_abstain": False,
+        "human_review_criteria": ["c"],
+    }
+    ok = tmp_path / "ok.jsonl"
+    ok.write_text(json.dumps(base) + "\n")
+    assert load_generation_eval_cases(ok)[0].context_anchor_keys == ("a", "b")
+
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text(json.dumps({**base, "acceptable_anchor_keys": ["z"]}) + "\n")
+    with pytest.raises(ValueError, match="outside its context"):
+        load_generation_eval_cases(outside)
+
+
+def test_generation_runner_uses_fixed_evidence_and_production_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from taxrag import evals
+    from taxrag.answers import AnswerDraft, DraftCitation, DraftClaim
+    from taxrag.evals import GenerationEvalCase, run_generation_evals
+
+    chunk = SimpleNamespace(
+        chunk_id="c1",
+        anchor_key="art-2-inciso-i",
+        anchor_title="Art. 2, inciso I",
+        source_title="IN",
+        canonical_url="https://example.test",
+        source_link="https://example.test",
+        authority_level="tax_authority_norm",
+        chunk_text="superior a R$ 35.584,00",
+    )
+    requested: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        evals, "fetch_chunks_by_anchor_keys", lambda _s, keys: requested.append(tuple(keys)) or [chunk]
+    )
+
+    class Provider:
+        model = "test"
+
+        def draft_answer(self, _question: str, chunks: list[object]) -> AnswerDraft:
+            return AnswerDraft(
+                (DraftClaim("O limite é R$ 35.584,00.", (DraftCitation("c1"),)),), False, None, None
+            )
+
+    case = GenerationEvalCase(
+        "g", "Qual é o limite?", ("art-2-inciso-i",), False, ("c",), context_anchor_keys=("art-2-inciso-i",)
+    )
+    english = GenerationEvalCase(
+        "e", "What is the deadline to file my tax return in Brazil?", (), True, ("c",),
+        context_anchor_keys=("art-2-inciso-i",),
+    )
+
+    results = run_generation_evals(None, [case, english], Provider())  # type: ignore[arg-type]
+
+    assert requested[0] == ("art-2-inciso-i",)
+    assert results[0].passed_structural_checks is True
+    assert results[0].answer.retrieval_strategy == "fixed_context"
+    assert results[1].answer.outcome == "unsupported_language"
+    assert results[1].passed_structural_checks is True
+
+
+def test_recall_at_k_counts_first_acceptable_rank_within_k() -> None:
+    ranks = [1, 3, 4, None, 10]
+
+    assert eval_manager._recall(ranks, 1) == 0.2
+    assert eval_manager._recall(ranks, 3) == 0.4
+    assert eval_manager._recall(ranks, 5) == 0.6
+    assert eval_manager._recall(ranks, 10) == 0.8
+    assert eval_manager._recall([], 3) is None

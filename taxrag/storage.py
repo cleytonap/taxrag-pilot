@@ -24,6 +24,10 @@ class LocalObjectStorage:
         # Replacing the completed temporary file avoids exposing a partially written artifact.
         os.replace(temporary, destination)
 
+    def exists(self, key: str) -> bool:
+        """Return whether an object is present under a validated relative key."""
+        return self._destination_for(key).is_file()
+
     def get_bytes(self, key: str) -> bytes:
         """Read bytes from a validated relative object-storage key."""
         source = self._destination_for(key)
