@@ -37,8 +37,8 @@ from taxrag.evals import (
     run_generation_evals,
     run_retrieval_evals,
 )
-from taxrag.models import Source, SourceVersion
-from taxrag.retrieval import SUPPORTED_STRATEGIES, RetrievedChunk
+from taxrag.models import ExtractedDocument, Source, SourceVersion
+from taxrag.retrieval import EMBEDDING_STRATEGIES, SUPPORTED_STRATEGIES, RetrievedChunk
 
 SuiteId = Literal["retrieval", "generation", "answer"]
 ProviderId = Literal["fake", "openai"]
@@ -91,7 +91,17 @@ def save_fixture(suite_id: str, content: str) -> dict[str, Any]:
 
 
 def list_artifacts() -> list[dict[str, Any]]:
-    """List local run artifacts and promoted baselines without exposing arbitrary paths."""
+    """List runs and baselines with the metadata the archive filters on.
+
+    Dates come from the artifact's own ``finished_at`` (UTC ISO timestamp), not the file
+    modification time: copying, unzipping or checking out files changes mtimes, which made
+    baselines look as if they were produced at the wrong time.
+    """
+    current_fixtures = {
+        suite_id: hashlib.sha256(path.read_bytes()).hexdigest()
+        for suite_id, path in SUITE_PATHS.items()
+        if path.exists()
+    }
     records = []
     for kind, directory in (("run", ARTIFACTS_DIRECTORY), ("baseline", BASELINES_DIRECTORY)):
         if not directory.exists():
@@ -99,16 +109,57 @@ def list_artifacts() -> list[dict[str, Any]]:
         for path in directory.iterdir():
             if path.is_file() and path.suffix in {".json", ".txt"}:
                 stat = path.stat()
-                records.append(
-                    {
-                        "name": path.name,
-                        "kind": kind,
-                        "size_bytes": stat.st_size,
-                        "modified_at": stat.st_mtime,
-                        "format": path.suffix.removeprefix("."),
-                    }
-                )
-    return sorted(records, key=lambda record: record["modified_at"], reverse=True)
+                record: dict[str, Any] = {
+                    "name": path.name,
+                    "kind": kind,
+                    "size_bytes": stat.st_size,
+                    "modified_at": stat.st_mtime,
+                    "format": path.suffix.removeprefix("."),
+                }
+                if path.suffix == ".json":
+                    record.update(_artifact_metadata(path, stat.st_mtime_ns, stat.st_size))
+                    suite = record.get("suite_id")
+                    record["fixture_is_current"] = (
+                        suite in current_fixtures
+                        and record.get("fixture_sha256") == current_fixtures[suite]
+                    )
+                records.append(record)
+    return sorted(
+        records,
+        key=lambda record: record.get("finished_at") or datetime.fromtimestamp(
+            record["modified_at"], UTC
+        ).isoformat(),
+        reverse=True,
+    )
+
+
+_METADATA_CACHE: dict[tuple[str, int, int], dict[str, Any]] = {}
+
+
+def _artifact_metadata(path: Path, mtime_ns: int, size: int) -> dict[str, Any]:
+    """Read the small header of a run artifact once per file version."""
+    key = (str(path), mtime_ns, size)
+    if key not in _METADATA_CACHE:
+        try:
+            artifact = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        summary = artifact.get("summary", {})
+        headline_key = "recall_at_three" if artifact.get("suite_id") == "retrieval" else "structural_pass_rate"
+        _METADATA_CACHE[key] = {
+            "suite_id": artifact.get("suite_id"),
+            "strategy": artifact.get("strategy"),
+            "provider": artifact.get("provider"),
+            "finished_at": artifact.get("finished_at"),
+            "fixture_sha256": artifact.get("fixture_sha256"),
+            "label": (artifact.get("baseline") or {}).get("label"),
+            "promoted_from": (artifact.get("baseline") or {}).get("source_artifact"),
+            "headline_metric": headline_key,
+            "headline_value": summary.get(headline_key),
+            "case_count": summary.get("case_count"),
+            "passed": summary.get("passed"),
+        }
+    return _METADATA_CACHE[key]
 
 
 def get_artifact(name: str) -> dict[str, str]:
@@ -145,7 +196,7 @@ def run_suite(
     started_at = datetime.now(UTC)
     if suite_id == "generation":
         strategy = "fixed_context"  # evidence comes from each case, not from a retriever
-    requires_embeddings = strategy in {"semantic", "hybrid_rrf"}
+    requires_embeddings = strategy in EMBEDDING_STRATEGIES
     embedding_provider = configured_embedding_provider() if requires_embeddings else None
     if embedding_provider is not None:
         # A partially embedded corpus would silently produce a low, non-comparable score.
@@ -225,6 +276,14 @@ def run_suite(
             "validation_rejections": sum(
                 result.answer.outcome == "provider_rejected" for result in results
             ),
+            "verification_abstentions": sum(
+                result.answer.outcome == "verification_abstained" for result in results
+            ),
+            # Answerable cases blocked by the verifier: its false positives (cost of safety).
+            "verifier_blocked_answerable": sum(
+                result.answer.outcome == "verification_abstained" and not result.expected_abstain
+                for result in results
+            ),
         }
         case_results = [
             {
@@ -248,8 +307,14 @@ def run_suite(
 
     finished_at = datetime.now(UTC)
     source_versions = session.execute(
-        select(Source.source_key, SourceVersion.id, SourceVersion.content_hash)
+        select(
+            Source.source_key,
+            SourceVersion.id,
+            SourceVersion.content_hash,
+            ExtractedDocument.extractor_version,
+        )
         .join(SourceVersion, SourceVersion.source_id == Source.id)
+        .outerjoin(ExtractedDocument, ExtractedDocument.source_version_id == SourceVersion.id)
         .where(SourceVersion.processing_status == "processed", Source.is_active.is_(True))
         .order_by(Source.source_key, SourceVersion.fetched_at.desc())
     ).all()
@@ -266,9 +331,22 @@ def run_suite(
         "embedding_model": embedding_provider.model if embedding_provider else None,
         "answer_model": settings.answer_model if suite_id != "retrieval" and provider_id == "openai" else None,
         "answer_top_k": settings.answer_top_k if suite_id == "answer" else None,
+        "rerank_model": settings.rerank_model if strategy == "hybrid_rerank" else None,
+        "answer_verification": settings.answer_verification if suite_id != "retrieval" else None,
+        "verifier_model": (
+            settings.verifier_model
+            if suite_id != "retrieval" and provider_id == "openai" and settings.answer_verification
+            else None
+        ),
         "summary": summary,
         "source_versions": [
-            {"source_key": row.source_key, "source_version_id": str(row.id), "content_hash": row.content_hash}
+            {
+                "source_key": row.source_key,
+                "source_version_id": str(row.id),
+                "content_hash": row.content_hash,
+                # Extractor + errata version: the same raw file can be indexed differently.
+                "processing_version": row.extractor_version,
+            }
             for row in source_versions
         ],
         "cases": case_results,
@@ -296,7 +374,7 @@ def _validate_run_request(
         raise ValueError(f"Unknown answer provider: {provider_id}")
     if suite_id == "retrieval" and provider_id != "fake":
         raise ValueError("The retrieval suite does not use an answer provider")
-    uses_embeddings = suite_id != "generation" and strategy in {"semantic", "hybrid_rrf"}
+    uses_embeddings = suite_id != "generation" and strategy in EMBEDDING_STRATEGIES
     if (provider_id == "openai" or uses_embeddings) and not confirm_paid_request:
         raise PermissionError("OpenAI requests require confirm_paid_request=true")
     return path
@@ -418,7 +496,10 @@ def promote_to_baseline(artifact_name: str, label: str) -> dict[str, Any]:
     for case in artifact["cases"]:
         for evidence in case.get("retrieved_evidence", []):
             excerpt = evidence.get("excerpt") or ""
-            if len(excerpt) > BASELINE_EXCERPT_CHARACTERS:
+            # Ranks beyond 3 keep anchor, rank and score (enough to compare) but no excerpt.
+            if (evidence.get("rank") or 0) > 3:
+                evidence["excerpt"] = ""
+            elif len(excerpt) > BASELINE_EXCERPT_CHARACTERS:
                 evidence["excerpt"] = excerpt[:BASELINE_EXCERPT_CHARACTERS] + "…"
     artifact["baseline"] = {
         "label": label,
@@ -449,7 +530,22 @@ def compare_artifacts(baseline_name: str, candidate_name: str) -> dict[str, Any]
         v["content_hash"] for v in candidate["source_versions"]
     }:
         warnings.append("Source versions differ; score changes may come from the corpus.")
-    for key in ("embedding_model", "answer_model", "provider", "answer_top_k"):
+    elif {v.get("processing_version") for v in baseline["source_versions"]} != {
+        v.get("processing_version") for v in candidate["source_versions"]
+    }:
+        warnings.append(
+            "Same raw sources but different extraction/indexing (processing version); "
+            "score changes may come from the corpus."
+        )
+    for key in (
+        "embedding_model",
+        "answer_model",
+        "provider",
+        "answer_top_k",
+        "rerank_model",
+        "answer_verification",
+        "verifier_model",
+    ):
         if baseline.get(key) != candidate.get(key):
             warnings.append(f"{key} differs: {baseline.get(key)} -> {candidate.get(key)}")
 
@@ -519,7 +615,7 @@ def debug_answer(
         raise ValueError(f"Unknown retrieval strategy: {strategy}")
     if provider_id not in {"fake", "openai"}:
         raise ValueError(f"Unknown answer provider: {provider_id}")
-    if (provider_id == "openai" or strategy in {"semantic", "hybrid_rrf"}) and not confirm_paid_request:
+    if (provider_id == "openai" or strategy in EMBEDDING_STRATEGIES) and not confirm_paid_request:
         raise PermissionError("OpenAI requests require confirm_paid_request=true")
 
     chunks: list[RetrievedChunk] = []
@@ -537,7 +633,7 @@ def debug_answer(
         validation_error = str(error)
 
     provider = DeterministicAnswerProvider() if provider_id == "fake" else configured_answer_provider()
-    requires_embeddings = strategy in {"semantic", "hybrid_rrf"}
+    requires_embeddings = strategy in EMBEDDING_STRATEGIES
     embedding_provider = configured_embedding_provider() if requires_embeddings else None
     if embedding_provider is not None:
         require_complete_embeddings(session, embedding_provider.model, embedding_provider.dimensions)

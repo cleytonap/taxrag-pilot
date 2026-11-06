@@ -6,10 +6,10 @@ import styles from "./page.module.css";
 type EvalCase = { case_id: string; question: string; context_anchor_keys?: string[]; acceptable_anchor_keys: string[]; preferred_anchor_keys?: string[]; expected_abstain?: boolean; human_review_criteria?: string[] };
 type Suite = { id: "retrieval" | "generation" | "answer"; label: string; path: string; case_count: number; cases: EvalCase[] };
 type Fixture = { id: Suite["id"]; path: string; content: string; sha256: string; cases: EvalCase[] };
-type Artifact = { name: string; kind?: "run" | "baseline"; size_bytes: number; modified_at: number; format: string };
-type Evidence = { rank?: number; chunk_id: string; anchor_key: string; anchor_title: string; source_title: string; source_link: string; score?: number; excerpt: string };
+type Artifact = { name: string; kind?: "run" | "baseline"; size_bytes: number; modified_at: number; format: string; suite_id?: string; strategy?: string; provider?: string | null; finished_at?: string; label?: string | null; headline_metric?: string; headline_value?: number | null; case_count?: number; passed?: number; fixture_is_current?: boolean; promoted_from?: string | null };
+type Evidence = { rank?: number; chunk_id: string; anchor_key: string; anchor_title: string; source_title: string; source_link: string; score?: number | null; excerpt: string };
 type DebugResult = { answer: { display_text: string; outcome: string; claims: Array<{ text: string; citations: Array<{ anchor_key: string; source_title: string; source_link: string }> }> }; retrieved_chunks: Evidence[]; diagnostics: { validation_error: string | null; rejected_draft: unknown | null } };
-type EvalOutcome = { artifact_name: string; summary: Record<string, number | null>; cases: Array<{ case_id: string; question: string; topic?: string; edge_case?: string; passed: boolean; acceptable_anchor_keys: string[]; preferred_anchor_keys?: string[]; acceptable_rank?: number | null; preferred_rank?: number | null; expected_abstain?: boolean; actual_outcome?: string; cited_acceptable_anchor_keys?: string[]; human_review_criteria?: string[]; answer?: { display_text: string }; retrieved_evidence: Evidence[] }> };
+type EvalOutcome = { artifact_name: string; summary: Record<string, number | null>; cases: Array<{ case_id: string; question: string; topic?: string; edge_case?: string; passed: boolean; acceptable_anchor_keys: string[]; preferred_anchor_keys?: string[]; acceptable_rank?: number | null; preferred_rank?: number | null; expected_abstain?: boolean; actual_outcome?: string; cited_acceptable_anchor_keys?: string[]; human_review_criteria?: string[]; answer?: { display_text: string }; validation_error?: string | null; retrieved_evidence: Evidence[] }> };
 
 type RunArtifact = EvalOutcome & { run_id: string; suite_id: Suite["id"]; strategy: string; provider: string | null; embedding_model: string | null; answer_model?: string | null; fixture_sha256: string; finished_at: string; baseline?: { label: string; promoted_at: string; source_artifact: string } };
 type RunJob = { job_id: string; status: "running" | "succeeded" | "failed"; completed: number; total: number | null; result: EvalOutcome | null; error: string | null };
@@ -160,8 +160,8 @@ export default function Home() {
     setLoadAttempt((attempt) => attempt + 1);
   }
 
-  const suiteNeedsPaidRequest = (selectedSuite !== "generation" && (suiteStrategy === "semantic" || suiteStrategy === "hybrid_rrf")) || (selectedSuite !== "retrieval" && suiteProvider === "openai");
-  const questionNeedsPaidRequest = strategy === "semantic" || strategy === "hybrid_rrf" || provider === "openai";
+  const suiteNeedsPaidRequest = (selectedSuite !== "generation" && PAID_STRATEGIES.has(suiteStrategy)) || (selectedSuite !== "retrieval" && suiteProvider === "openai");
+  const questionNeedsPaidRequest = PAID_STRATEGIES.has(strategy) || provider === "openai";
   const activeSuite = suites.find((item) => item.id === selectedSuite);
 
   return <main className={styles.main}>
@@ -180,8 +180,9 @@ export default function Home() {
         <h3>Cases ({fixture?.cases.length ?? 0})</h3><div className={styles.caseGrid}>{fixture?.cases.map((item) => <article key={item.case_id}><code>{item.case_id}</code><p>{item.question}</p>{item.context_anchor_keys?.length ? <small>Context: {item.context_anchor_keys.join(" · ")}</small> : null}<small>{item.acceptable_anchor_keys.length ? `${item.context_anchor_keys?.length ? "Must cite one of" : "Acceptable"}: ${item.acceptable_anchor_keys.join(" · ")}` : "No support anchors (expected abstention)"}</small></article>)}</div>
       </div>
     </section>}
-    {tab === "archive" && <section className={styles.archive}><div><p className={styles.eyebrow}>Local history and Git-tracked baselines</p><h2>Saved runs</h2><p>Runs live in <code>var/eval-runs/</code> (local, not committed). Promote a run to a baseline to keep it in <code>docs/evals/baselines/</code> and compare later runs against it.</p></div><div className={styles.artifactList}>{artifacts.map((artifact) => <button key={artifact.name} className={artifact.name === archiveName ? styles.artifactSelected : ""} onClick={() => void openArtifact(artifact.name)}><strong>{artifact.kind === "baseline" ? "★ Baseline · " : ""}{artifact.name}</strong><span>{new Date(artifact.modified_at * 1000).toLocaleString()} · {Math.ceil(artifact.size_bytes / 1024)} KB</span></button>)}{artifacts.length === 0 && <p>No runs yet. Run a suite from “Suites & cases”.</p>}</div>
-      {archiveRun && <section className={styles.runMeta}><div><p className={styles.eyebrow}>{archiveRun.baseline ? `Baseline “${archiveRun.baseline.label}”` : "Run"} · {archiveRun.suite_id} suite</p><h3>{archiveRun.strategy}{archiveRun.provider ? ` · ${archiveRun.provider}` : ""}{archiveRun.embedding_model ? ` · ${archiveRun.embedding_model}` : ""}{archiveRun.answer_model ? ` · ${archiveRun.answer_model}` : ""}</h3><small>Finished {new Date(archiveRun.finished_at).toLocaleString()} · fixture {archiveRun.fixture_sha256.slice(0, 12)}</small></div>
+    {tab === "archive" && <section className={styles.archive}><div><p className={styles.eyebrow}>Local history and Git-tracked baselines</p><h2>Saved runs</h2><p>Runs live in <code>var/eval-runs/</code> (local, not committed). Promote a run to a baseline to keep it in <code>docs/evals/baselines/</code> and compare later runs against it. Times are shown in your local time zone; file names use UTC.</p></div>
+      <ArchiveTable artifacts={artifacts} selected={archiveName} onOpen={(name) => void openArtifact(name)} />
+      {archiveRun && <section className={styles.runMeta}><div><p className={styles.eyebrow}>{archiveRun.baseline ? `Baseline “${archiveRun.baseline.label}”` : "Run"} · {archiveRun.suite_id} suite</p><h3>{archiveRun.strategy}{archiveRun.provider ? ` · ${archiveRun.provider}` : ""}{archiveRun.embedding_model ? ` · ${archiveRun.embedding_model}` : ""}{archiveRun.answer_model ? ` · ${archiveRun.answer_model}` : ""}</h3><small>Finished {new Date(archiveRun.finished_at).toLocaleString(undefined, { timeZoneName: "short" })} · fixture {archiveRun.fixture_sha256.slice(0, 12)}</small></div>
         <div className={styles.runControls}>{!archiveRun.baseline && <label>Save as baseline (label)<span className={styles.inline}><input value={baselineLabel} onChange={(event) => setBaselineLabel(event.target.value)} placeholder="v0" /><button className={styles.secondary} onClick={() => void promoteBaseline()}>Save baseline</button></span></label>}<label>Compare with baseline<select value={compareWith} onChange={(event) => void compareToBaseline(event.target.value)}><option value="">Select a baseline…</option>{artifacts.filter((item) => item.kind === "baseline" && item.name !== archiveName && item.name.includes(`_${archiveRun.suite_id}_`)).map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}</select></label></div>
         {comparison && <ComparisonPanel comparison={comparison} />}
       </section>}
@@ -196,17 +197,54 @@ export default function Home() {
 }
 
 // "Semantic" is the production pipeline (TAXRAG_ANSWER_STRATEGY); others are diagnostics.
-function StrategyOptions() { return <><option value="semantic">Semantic (production)</option><option value="lexical">Lexical (diagnostic)</option><option value="lexical_authority">Lexical + authority (diagnostic)</option><option value="hybrid_rrf">Hybrid RRF (diagnostic)</option></>; }
+// Strategies that call OpenAI (question embeddings and/or the reranker).
+const PAID_STRATEGIES = new Set(["semantic", "hybrid_rrf", "hybrid_rerank"]);
+
+function StrategyOptions() { return <><option value="semantic">Semantic (production)</option><option value="hybrid_rerank">Hybrid + LLM rerank (candidate)</option><option value="lexical">Lexical (diagnostic)</option><option value="lexical_authority">Lexical + authority (diagnostic)</option><option value="hybrid_rrf">Hybrid RRF (diagnostic)</option></>; }
 
 function EvidenceList({ items }: { items: Evidence[] }) {
-  return <div className={styles.evidence}>{items.map((item, index) => <details key={`${item.chunk_id}-${index}`}><summary>{item.rank ? `#${item.rank} ` : ""}{item.anchor_key}{item.score !== undefined && <span>score {item.score.toFixed(4)}</span>}</summary><p><a href={item.source_link} target="_blank" rel="noreferrer">Open {item.source_title} · {item.anchor_title}</a></p><p>{item.excerpt}</p></details>)}</div>;
+  return <div className={styles.evidence}>{items.map((item, index) => <details key={`${item.chunk_id}-${index}`}><summary>{item.rank ? `#${item.rank} ` : ""}{item.anchor_key}{typeof item.score === "number" && <span>score {item.score.toFixed(4)}</span>}</summary><p><a href={item.source_link} target="_blank" rel="noreferrer">Open {item.source_title} · {item.anchor_title}</a></p><p>{item.excerpt}</p></details>)}</div>;
 }
 
 function SuiteResult({ result, onOpenArtifact, showOpen = true }: { result: EvalOutcome; onOpenArtifact: () => void; showOpen?: boolean }) {
   const [failuresOnly, setFailuresOnly] = useState(false);
   const metrics = Object.entries(result.summary).filter(([, value]) => typeof value === "number");
   const cases = failuresOnly ? result.cases.filter((item) => !item.passed) : result.cases;
-  return <section className={styles.suiteResults}><div className={styles.sectionTitle}><div><p className={styles.eyebrow}>Saved run · {result.artifact_name}</p><h3>Run summary</h3></div>{showOpen && <button className={styles.secondary} onClick={onOpenArtifact}>Open in run archive</button>}</div><div className={styles.metricGrid}>{metrics.map(([name, value]) => <div key={name}><small>{name.replaceAll("_", " ")}</small><strong>{(name.includes("rate") || name.includes("recall")) && value !== null ? `${(value * 100).toFixed(0)}%` : value}</strong></div>)}</div><div className={styles.sectionTitle}><h3>Case results ({cases.length})</h3><label className={styles.consent}><input type="checkbox" checked={failuresOnly} onChange={(event) => setFailuresOnly(event.target.checked)} /> Show only cases needing review</label></div><div className={styles.resultCases}>{cases.map((item) => <article key={item.case_id} className={item.passed ? styles.resultPass : styles.resultFail}><div><strong>{item.case_id}{item.topic && <span className={styles.tag}>{item.topic}</span>}{item.edge_case && <span className={styles.edgeTag}>edge: {item.edge_case}</span>}</strong><span>{item.passed ? "Pass" : "Needs review"}</span></div><p>{item.question}</p>{item.acceptable_rank !== undefined && <small>Acceptable rank: {item.acceptable_rank ?? "outside top 3"}{item.preferred_anchor_keys?.length ? ` · preferred rank: ${item.preferred_rank ?? "outside top 3"}` : ""} · expected: {item.acceptable_anchor_keys.join(", ")}</small>}{item.actual_outcome && <small>Expected: {item.expected_abstain ? "abstain" : "answer"} · outcome: {item.actual_outcome} · acceptable citation: {item.cited_acceptable_anchor_keys?.join(", ") || "none"}</small>}{item.answer?.display_text && <p>{item.answer.display_text}</p>}{item.human_review_criteria?.length ? <ul>{item.human_review_criteria.map((criterion) => <li key={criterion}>{criterion}</li>)}</ul> : null}{item.retrieved_evidence?.length ? <EvidenceList items={item.retrieved_evidence} /> : null}</article>)}</div></section>;
+  return <section className={styles.suiteResults}><div className={styles.sectionTitle}><div><p className={styles.eyebrow}>Saved run · {result.artifact_name}</p><h3>Run summary</h3></div>{showOpen && <button className={styles.secondary} onClick={onOpenArtifact}>Open in run archive</button>}</div><div className={styles.metricGrid}>{metrics.map(([name, value]) => <div key={name}><small>{name.replaceAll("_", " ")}</small><strong>{(name.includes("rate") || name.includes("recall")) && value !== null ? `${(value * 100).toFixed(0)}%` : value}</strong></div>)}</div><div className={styles.sectionTitle}><h3>Case results ({cases.length})</h3><label className={styles.consent}><input type="checkbox" checked={failuresOnly} onChange={(event) => setFailuresOnly(event.target.checked)} /> Show only cases needing review</label></div><div className={styles.resultCases}>{cases.map((item) => <article key={item.case_id} className={item.passed ? styles.resultPass : styles.resultFail}><div><strong>{item.case_id}{item.topic && <span className={styles.tag}>{item.topic}</span>}{item.edge_case && <span className={styles.edgeTag}>edge: {item.edge_case}</span>}</strong><span>{item.passed ? "Pass" : "Needs review"}</span></div><p>{item.question}</p>{item.acceptable_rank !== undefined && <small>Acceptable rank: {item.acceptable_rank ?? "outside top 3"}{item.preferred_anchor_keys?.length ? ` · preferred rank: ${item.preferred_rank ?? "outside top 3"}` : ""} · expected: {item.acceptable_anchor_keys.join(", ")}</small>}{item.actual_outcome && <small>Expected: {item.expected_abstain ? "abstain" : "answer"} · outcome: {item.actual_outcome} · acceptable citation: {item.cited_acceptable_anchor_keys?.join(", ") || "none"}</small>}{item.answer?.display_text && <p>{item.answer.display_text}</p>}{item.validation_error && <small className={styles.blocked}>Blocked before display: {item.validation_error}</small>}{item.human_review_criteria?.length ? <ul>{item.human_review_criteria.map((criterion) => <li key={criterion}>{criterion}</li>)}</ul> : null}{item.retrieved_evidence?.length ? <EvidenceList items={item.retrieved_evidence} /> : null}</article>)}</div></section>;
+}
+
+const SUITE_NAMES: Record<string, string> = { retrieval: "Retrieval", generation: "Generation", answer: "End-to-end" };
+
+function formatWhen(artifact: Artifact) {
+  const when = artifact.finished_at ? new Date(artifact.finished_at) : new Date(artifact.modified_at * 1000);
+  // dateStyle/timeStyle cannot be combined with timeZoneName, so list the fields explicitly.
+  return when.toLocaleString(undefined, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+}
+
+function ArchiveTable({ artifacts, selected, onOpen }: { artifacts: Artifact[]; selected: string; onOpen: (name: string) => void }) {
+  const [kind, setKind] = useState("all");
+  const [suite, setSuite] = useState("all");
+  const [strategy, setStrategy] = useState("all");
+  const [label, setLabel] = useState("all");
+  const [currentOnly, setCurrentOnly] = useState(false);
+  const [hidePromoted, setHidePromoted] = useState(true);
+  const promoted = new Set(artifacts.map((item) => item.promoted_from).filter(Boolean));
+  const values = (key: keyof Artifact) => [...new Set(artifacts.map((item) => item[key]).filter((value): value is string => typeof value === "string"))].sort();
+  const rows = artifacts.filter((item) => (kind === "all" || item.kind === kind) && (suite === "all" || item.suite_id === suite) && (strategy === "all" || item.strategy === strategy) && (label === "all" || item.label === label) && (!currentOnly || item.fixture_is_current) && !(hidePromoted && item.kind === "run" && promoted.has(item.name)));
+  const select = (name: string, value: string, set: (value: string) => void, options: string[], names: Record<string, string> = {}) => <label>{name}<select value={value} onChange={(event) => set(event.target.value)}><option value="all">All</option>{options.map((option) => <option key={option} value={option}>{names[option] ?? option}</option>)}</select></label>;
+  return <div className={styles.archiveTable}>
+    <div className={styles.runControls}>{select("Kind", kind, setKind, ["baseline", "run"], { baseline: "Baselines", run: "Runs" })}{select("Suite", suite, setSuite, values("suite_id"), SUITE_NAMES)}{select("Strategy", strategy, setStrategy, values("strategy"))}{select("Baseline label", label, setLabel, values("label"))}<label className={styles.consent}><input type="checkbox" checked={currentOnly} onChange={(event) => setCurrentOnly(event.target.checked)} /> Current fixture only</label><label className={styles.consent}><input type="checkbox" checked={hidePromoted} onChange={(event) => setHidePromoted(event.target.checked)} /> Hide runs already saved as baselines</label></div>
+    <table><thead><tr><th>Kind</th><th>Suite</th><th>Strategy · provider</th><th>Finished</th><th>Result</th><th>Fixture</th></tr></thead><tbody>
+      {rows.map((item) => <tr key={`${item.kind}-${item.name}`} className={item.name === selected ? styles.rowSelected : ""} onClick={() => onOpen(item.name)} title={item.name}>
+        <td>{item.kind === "baseline" ? <span className={styles.baselineTag}>★ {item.label ?? "baseline"}</span> : <span className={styles.tag}>run</span>}</td>
+        <td>{SUITE_NAMES[item.suite_id ?? ""] ?? item.suite_id ?? "—"}</td>
+        <td>{item.strategy ?? "—"}{item.provider ? ` · ${item.provider}` : ""}</td>
+        <td>{formatWhen(item)}</td>
+        <td>{typeof item.headline_value === "number" ? `${(item.headline_value * 100).toFixed(1)}%` : "—"}{typeof item.passed === "number" ? ` (${item.passed}/${item.case_count})` : ""}</td>
+        <td>{item.fixture_is_current ? "current" : <span className={styles.muted}>older</span>}</td>
+      </tr>)}
+      {rows.length === 0 && <tr><td colSpan={6}>No saved runs match these filters.</td></tr>}
+    </tbody></table></div>;
 }
 
 function ComparisonPanel({ comparison }: { comparison: Comparison }) {

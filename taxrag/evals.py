@@ -178,7 +178,10 @@ ANSWER_CASE_METADATA_KEYS = frozenset({"topic", "edge_case", "label_notes"})
 RETRIEVAL_EVAL_DEPTH = 10
 # Outcomes that count as the system deciding not to answer. "provider_rejected" is excluded: it
 # is a validation safety net firing, which must not make a failing model look compliant.
-DELIBERATE_ABSTENTIONS = frozenset({"provider_abstained", "unsupported_language"})
+# The answer verifier's abstention is a designed system decision, like the language gate.
+DELIBERATE_ABSTENTIONS = frozenset(
+    {"provider_abstained", "unsupported_language", "verification_abstained"}
+)
 
 
 def load_answer_eval_cases(path: Path) -> list[AnswerEvalCase]:
@@ -330,6 +333,7 @@ def run_answer_evals(
                     source_link=chunk.source_link,
                     excerpt=chunk.chunk_text,
                     rank=rank,
+                    score=chunk.score,
                 )
                 for rank, chunk in enumerate(chunks, start=1)
             )

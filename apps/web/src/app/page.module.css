@@ -49,3 +49,13 @@
 .tag, .edgeTag { margin-left: 8px; padding: 2px 7px; color: #173a35; background: #e2e8d2; border-radius: 10px; font-size: .72rem; font-weight: 700; }
 .edgeTag { color: #783d21; background: #fff0d7; }
 .caseGrid small { display: block; margin-top: 6px; }
+.archiveTable { display: grid; gap: 10px; }
+.archiveTable table { width: 100%; border-collapse: collapse; font-size: .9rem; background: #fffdf7; }
+.archiveTable th { padding: 9px 10px; text-align: left; color: #53645b; border-bottom: 2px solid #d7ccbd; font-weight: 800; }
+.archiveTable td { padding: 9px 10px; border-bottom: 1px solid #ece4d7; }
+.archiveTable tbody tr { cursor: pointer; }
+.archiveTable tbody tr:hover { background: #f4efe5; }
+.rowSelected { background: #fbe6d8 !important; }
+.baselineTag { padding: 2px 8px; color: #fffaf0; background: #c45126; border-radius: 10px; font-size: .75rem; font-weight: 800; }
+.muted { color: #8a8a80; }
+.blocked { color: #8a3a1f !important; }

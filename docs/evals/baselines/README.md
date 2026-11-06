@@ -31,39 +31,49 @@ extractor v6, 787 chunks.
 V0 is complete. Analysis and recommendations: [../v0-baseline-rca.md](../v0-baseline-rca.md).
 Human review (AI first pass, pending confirmation): [v0-answer-review.md](v0-answer-review.md).
 
-## Recording V1 (after the 2026-11-06 fixes)
+## V1 baseline (after the 2026-11-06 fixes)
 
-The corpus was reprocessed (extractor v7 + errata), which **deleted all embeddings**. Re-embed
-before any semantic, hybrid or e2e run:
+Fixtures: retrieval 69 cases (`d16e5ece`), generation 35 (`44bdaad6`), e2e 33 (`4c587dd9`).
+Corpus: extractor v7 + errata, 785 chunks, re-embedded. Answers: `gpt-4.1-mini`, top-5 context.
+
+| Run | File | Headline |
+| --- | --- | --- |
+| retrieval · `semantic` (production) | `v1_retrieval_semantic.json` | recall@3 **60/69 (87.0%)**, @5 95.7%, @10 98.6%, MRR 0.78; preferred 30/45 |
+| retrieval · `hybrid_rrf` | `v1_retrieval_hybrid_rrf.json` | @3 84.1%, @1 72.5%, @10 100%, MRR 0.81 |
+| retrieval · `lexical` | `v1_retrieval_lexical.json` | @3 75.4%, @5 84.1% |
+| generation · `openai` | `v1_generation_fixed_context_openai.json` | 25/35: answerable 21/22, **abstentions 4/13**, 8 unsafe |
+| e2e · `semantic` · `openai` | `v1_answer_semantic_openai.json` | 25/33: answerable 18/22, abstentions 7/11, 3 unsafe |
+
+Notes:
+
+- The generation and e2e runs were promoted from your run artifacts after the UI crash was fixed
+  (2026-11-06). They are labelled `v1` because they belong to the same session as the V1
+  retrieval runs; the V0 answer baselines already exist.
+- `lexical_authority` was not recorded for V1 (diagnostic only).
+- The V0 semantic retrieval file carries the label `v0-retrieval-semantic` inside it, so it does
+  not appear under the `v0` label filter in the Run archive.
+- Artifacts from V1 onwards record top-10 ranks with scores. Baselines promoted after this date
+  keep excerpts only for ranks 1–3, plus a per-source `processing_version`, so that comparisons
+  warn when extraction changed but the raw sources did not.
+
+Analysis: [../v1-results-rca.md](../v1-results-rca.md).
+
+## Recording V2
+
+Run the experiment plan in [../v1-results-rca.md](../v1-results-rca.md) §5 (reranked retrieval,
+generation with and without the verifier, e2e with both strategies), then promote the chosen
+configuration with `--baseline v2`. For example:
 
 ```bash
-bash scripts/run-workshop.sh --with-embeddings     # migrations, reprocess, re-embed (~US$0.01)
-
-# Production pipeline first, then diagnostics.
-uv run python -m apps.worker run-suite retrieval  --strategy semantic --confirm-paid --baseline v1
-uv run python -m apps.worker run-suite generation --provider openai   --confirm-paid --baseline v1
-uv run python -m apps.worker run-suite answer     --provider openai   --confirm-paid --baseline v1
-for st in lexical lexical_authority hybrid_rrf; do
-  uv run python -m apps.worker run-suite retrieval --strategy $st --confirm-paid --baseline v1
-done
-
-# Compare with V0 (fixtures and corpus changed, so expect drift warnings; shared cases only).
-uv run python -m apps.worker compare-runs v0_retrieval_semantic.json v1_retrieval_semantic.json
-uv run python -m apps.worker compare-runs v0_answer_semantic_openai.json v1_answer_semantic_openai.json
-
-# Human review forms (answers shown exactly as users see them, caveats included).
-uv run python scripts/answer-review-form.py v1_generation_fixed_context_openai.json
-uv run python scripts/answer-review-form.py v1_answer_semantic_openai.json
+uv run python -m apps.worker run-suite retrieval  --strategy hybrid_rerank --confirm-paid --baseline v2
+uv run python -m apps.worker run-suite generation --provider openai --confirm-paid --baseline v2
+uv run python -m apps.worker run-suite answer --strategy hybrid_rerank --provider openai --confirm-paid --baseline v2
+uv run python -m apps.worker compare-runs v1_retrieval_semantic.json v2_retrieval_hybrid_rerank.json
+uv run python -m apps.worker compare-runs v1_generation_fixed_context_openai.json v2_generation_fixed_context_openai.json
+uv run python scripts/answer-review-form.py v2_answer_hybrid_rerank_openai.json
 ```
 
-Things to watch when comparing:
-
-- **e2e vs generation.** The generation suite has no V0. Its first run *is* its baseline.
-  Failures there are answer-mechanism problems regardless of retrieval.
-- **`unsafe_answers` and `validation_rejections`.** A rejection is the figure check blocking an
-  answer; read the `validation_error` of each.
-- **Attribution.** To attribute the e2e change to top-5 context versus the other fixes, repeat
-  the e2e run with `TAXRAG_ANSWER_TOP_K=3` (label it, e.g., `v1-k3`).
+No re-embedding is needed for V2: the corpus did not change.
 
 ### How V0 was recorded (repeat this procedure for later baselines)
 

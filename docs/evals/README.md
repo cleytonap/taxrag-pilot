@@ -27,7 +27,9 @@ How to read them together:
 
 ## Production Focus
 
-The product optimises **one** pipeline: `TAXRAG_ANSWER_STRATEGY` (default `semantic`). A change
+The product optimises **one** pipeline: `TAXRAG_ANSWER_STRATEGY` (default `semantic`; the
+candidate replacement `hybrid_rerank` is adopted only if V2 meets the rule in
+`v1-results-rca.md` §5). A change
 is accepted on its generation and e2e results. Retrieval metrics explain those results. The other
 retrieval strategies stay in the retrieval suite as diagnostics and references; they are not
 required to improve. Commands and the UI default to the production strategy. Citation text and
@@ -41,6 +43,10 @@ indexed text are separate columns, so an indexing change never alters what a use
 - **Known-wrong official passages are excluded** from the index via `data/source-errata.json`.
   Each entry quotes the conflicting text and the controlling norm; tests verify both. Fixtures
   must never use an excluded anchor as evidence.
+- **Answers are verified before display.** After deterministic checks (citations retrieved,
+  figures present in the cited evidence), an independent verifier blocks answers that do not
+  address the question or rely on unsupported claims (outcome `verification_abstained`, a
+  deliberate abstention; `verifier_blocked_answerable` counts its cost).
 - **Answers show their caveats.** `limitation` and `clarification_question` are part of the
   user-visible answer and are graded in human review.
 

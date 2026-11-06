@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 from urllib.parse import quote
 
@@ -13,10 +13,16 @@ from sqlalchemy.orm import Session
 
 from taxrag.config import settings
 from taxrag.embeddings import EmbeddingProvider, configured_embedding_provider
+from taxrag.rerank import Reranker, configured_reranker, rerank_order
 
 # "fixed_context" labels evidence chosen by an eval case (answer-generation suite), not retrieved.
-RetrievalStrategy = Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf", "fixed_context"]
-SUPPORTED_STRATEGIES = ("lexical", "lexical_authority", "semantic", "hybrid_rrf")
+RetrievalStrategy = Literal[
+    "lexical", "lexical_authority", "semantic", "hybrid_rrf", "hybrid_rerank", "fixed_context"
+]
+SUPPORTED_STRATEGIES = ("lexical", "lexical_authority", "semantic", "hybrid_rrf", "hybrid_rerank")
+# Strategies that embed the question (and therefore need vectors for the whole corpus).
+EMBEDDING_STRATEGIES = frozenset({"semantic", "hybrid_rrf", "hybrid_rerank"})
+RERANK_CANDIDATES = 20
 RRF_CANDIDATE_LIMIT = 20
 RRF_DAMPING_CONSTANT = 60
 
@@ -83,6 +89,7 @@ def search_chunks(
     limit: int = 3,
     strategy: RetrievalStrategy = "lexical",
     embedding_provider: EmbeddingProvider | None = None,
+    reranker: Reranker | None = None,
 ) -> list[RetrievedChunk]:
     """Return chunks using one explicit, independently measurable retrieval strategy."""
     strategy = validate_strategy(strategy)
@@ -94,6 +101,14 @@ def search_chunks(
         return _search_semantic_chunks(
             session, question, limit, embedding_provider or configured_embedding_provider()
         )
+    if strategy == "hybrid_rerank":
+        return _search_hybrid_rerank_chunks(
+            session,
+            question,
+            limit,
+            embedding_provider or configured_embedding_provider(),
+            reranker or configured_reranker(),
+        )
     if strategy == "hybrid_rrf":
         return _search_hybrid_rrf_chunks(
             session,
@@ -102,6 +117,22 @@ def search_chunks(
             embedding_provider or configured_embedding_provider(),
         )
     return _search_lexical_chunks(session, question, limit, strategy)
+
+
+def _search_hybrid_rerank_chunks(
+    session: Session,
+    question: str,
+    limit: int,
+    provider: EmbeddingProvider,
+    reranker: Reranker,
+) -> list[RetrievedChunk]:
+    """Rerank the fused lexical+semantic candidates with an LLM (see taxrag/rerank.py)."""
+    candidates = _search_hybrid_rrf_chunks(session, question, RERANK_CANDIDATES, provider)
+    order = rerank_order(reranker, question, [candidate.chunk_text for candidate in candidates])
+    return [
+        replace(candidates[index], strategy="hybrid_rerank", score=1 / position)
+        for position, index in enumerate(order[:limit], start=1)
+    ]
 
 
 def reciprocal_rank_fusion_score(*ranks: int | None) -> float:

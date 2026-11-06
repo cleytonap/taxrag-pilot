@@ -41,7 +41,7 @@ class DebugAnswerRequest(BaseModel):
     """One explicit question submitted from the local Eval Manager workbench."""
 
     question: str = Field(min_length=1, max_length=4_000)
-    strategy: Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf"] = "semantic"
+    strategy: Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf", "hybrid_rerank"] = "semantic"
     provider: Literal["fake", "openai"] = "fake"
     confirm_paid_request: bool = False
 
@@ -49,7 +49,7 @@ class DebugAnswerRequest(BaseModel):
 class SuiteRunRequest(BaseModel):
     """Local suite run configuration selected in the Eval Workshop."""
 
-    strategy: Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf"] = "lexical"
+    strategy: Literal["lexical", "lexical_authority", "semantic", "hybrid_rrf", "hybrid_rerank"] = "lexical"
     provider: Literal["fake", "openai"] = "fake"
     confirm_paid_request: bool = False
 

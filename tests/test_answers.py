@@ -214,7 +214,7 @@ def test_openai_provider_uses_strict_structured_output_without_storing_response(
                 "text": "A obtenção de ganho de capital pode exigir a declaração.",
                 "citations": [
                     {
-                        "chunk_id": "chunk-1",
+                        "chunk_id": "E1",
                     }
                 ],
             }
@@ -247,7 +247,8 @@ def test_openai_provider_uses_strict_structured_output_without_storing_response(
     assert calls[0]["temperature"] == 0
     assert calls[0]["text"] == {"format": answers._response_format()}
     input_payload = json.loads(calls[0]["input"])
-    assert input_payload["evidence"][0]["chunk_id"] == "chunk-1"
+    # The model sees short ids (UUIDs were mis-copied in V1); the draft maps them back.
+    assert input_payload["evidence"][0]["chunk_id"] == "E1"
 
 
 def test_answer_instruction_requires_criterion_limited_scope_and_concise_abstention() -> None:

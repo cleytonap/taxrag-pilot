@@ -71,7 +71,12 @@ def test_promoted_baseline_is_compact_labelled_and_immutable(directories: tuple[
     assert saved["baseline"]["label"] == "v0"
     assert saved["baseline"]["source_artifact"] == "run.json"
     assert len(saved["cases"][0]["retrieved_evidence"][0]["excerpt"]) <= 301
-    assert [item["kind"] for item in eval_manager.list_artifacts()] == ["baseline", "run"]
+    listed = {item["kind"]: item for item in eval_manager.list_artifacts()}
+    assert set(listed) == {"baseline", "run"}
+    # Archive metadata comes from the artifact itself, not from file modification times.
+    assert listed["baseline"]["label"] == "v0"
+    assert listed["baseline"]["finished_at"] == "2026-11-05T00:00:00+00:00"
+    assert listed["run"]["suite_id"] == "retrieval" and listed["run"]["strategy"] == "lexical"
     with pytest.raises(FileExistsError):
         eval_manager.promote_to_baseline("run.json", "v0")
     with pytest.raises(ValueError):

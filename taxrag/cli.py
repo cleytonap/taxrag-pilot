@@ -28,7 +28,12 @@ from taxrag.evals import (
 )
 from taxrag.ingestion import ingest_source
 from taxrag.processing import process_latest_source_version
-from taxrag.retrieval import SUPPORTED_STRATEGIES, RetrievedChunk, search_chunks
+from taxrag.retrieval import (
+    EMBEDDING_STRATEGIES,
+    SUPPORTED_STRATEGIES,
+    RetrievedChunk,
+    search_chunks,
+)
 from taxrag.sources import APPROVED_SOURCES
 
 
@@ -210,7 +215,7 @@ def main() -> None:
 
     requires_embeddings = args.command == "embed-source" or (
         args.command in {"search", "eval-retrieval", "eval-answers", "answer", "run-suite"}
-        and args.strategy in {"semantic", "hybrid_rrf"}
+        and args.strategy in EMBEDDING_STRATEGIES
         and getattr(args, "suite", None) != "generation"
     )
     if requires_embeddings and not settings.openai_api_key:
@@ -322,7 +327,7 @@ def _dispatch(args: argparse.Namespace) -> None:
                 strategy=args.strategy,
                 embedding_provider=(
                     configured_embedding_provider()
-                    if args.strategy in {"semantic", "hybrid_rrf"}
+                    if args.strategy in EMBEDDING_STRATEGIES
                     else None
                 ),
             )
@@ -367,7 +372,7 @@ def _dispatch(args: argparse.Namespace) -> None:
                 strategy=args.strategy,
                 embedding_provider=(
                     configured_embedding_provider()
-                    if args.strategy in {"semantic", "hybrid_rrf"}
+                    if args.strategy in EMBEDDING_STRATEGIES
                     else None
                 ),
                 on_validation_failure=debug_handler,

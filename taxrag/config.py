@@ -38,6 +38,9 @@ class Settings:
     answer_model: str
     answer_strategy: str
     answer_top_k: int
+    rerank_model: str
+    answer_verification: bool
+    verifier_model: str
 
 
 settings = Settings(
@@ -57,4 +60,12 @@ settings = Settings(
     # Evidence chunks given to the answer model. V0 used 3; every answerable V0 failure had no
     # acceptable chunk in those 3. Override to run ablations (e.g. TAXRAG_ANSWER_TOP_K=3).
     answer_top_k=int(os.getenv("TAXRAG_ANSWER_TOP_K", "5")),
+    # LLM used to reorder hybrid candidates for the hybrid_rerank strategy.
+    rerank_model=os.getenv("TAXRAG_RERANK_MODEL", "gpt-4.1-mini"),
+    # Second-pass check that each answer addresses the question and is supported by its
+    # citations (see taxrag/answers.py). Set to 0 to measure its effect.
+    answer_verification=os.getenv("TAXRAG_ANSWER_VERIFICATION", "1") != "0",
+    verifier_model=os.getenv(
+        "TAXRAG_VERIFIER_MODEL", os.getenv("TAXRAG_ANSWER_MODEL", "gpt-4.1-mini")
+    ),
 )
